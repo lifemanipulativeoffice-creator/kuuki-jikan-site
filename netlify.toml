@@ -1,0 +1,18 @@
+# ==========================================================
+# Netlify設定
+# - 静的ファイル(HTML/CSS/JS)は public フォルダをそのまま配信
+# - /api/* へのアクセスは Netlify Functions（既存Expressアプリ）に転送
+# ==========================================================
+
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+  command = "npm install"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/api/:splat"
+  status = 200
+
+[functions]
+  node_bundler = "esbuild"
