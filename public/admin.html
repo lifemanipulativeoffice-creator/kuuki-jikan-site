@@ -1,1 +1,130 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LIFE整体院｜管理者画面</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: #f5eee5;
+  color: #5b4032;
+  font-family: -apple-system, BlinkMacSystemFont, "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
+}
+.page { width: min(96vw, 760px); margin: 0 auto; padding: 16px 0 30px; }
+.header { text-align: center; margin-bottom: 14px; }
+.clinic { font-size: 12px; letter-spacing: .12em; color: #80695b; }
+h1 { margin: 3px 0 0; font-size: 25px; }
+h2 { margin: 0 0 10px; font-size: 18px; }
+.card { background: #fffaf5; border: 1px solid #d5c1ae; border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+#loginScreen { max-width: 360px; margin: 60px auto; }
+.password-input { width: 100%; padding: 12px; border: 1px solid #d5c1ae; border-radius: 9px; background: white; text-align: center; font-size: 20px; letter-spacing: .3em; }
+.primary-button { width: 100%; margin-top: 10px; padding: 11px; border: 0; border-radius: 9px; background: #5b4032; color: white; font-weight: 700; }
+.login-error { min-height: 20px; margin-top: 8px; color: #a9493d; text-align: center; font-size: 12px; }
+.top-link { display: inline-block; padding: 7px 16px; border: 1px solid #d5c1ae; border-radius: 8px; background: #fffaf5; color: #80695b; text-decoration: none; font-size: 12px; }
+#adminScreen { display: none; }
+.date-control { display: flex; align-items: center; gap: 8px; }
+.date-control input { flex: 1; min-width: 0; padding: 9px; border: 1px solid #d5c1ae; border-radius: 8px; background: white; }
+.small-button { padding: 9px 11px; border: 1px solid #d5c1ae; border-radius: 8px; background: #fff; color: #5b4032; font-weight: 700; }
+.manual-row { display: grid; grid-template-columns: 58px 1fr; align-items: center; min-height: 39px; border-bottom: 1px solid #eadfd5; }
+.manual-time { font-size: 12px; font-weight: 700; }
+.manual-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+.manual-button { padding: 5px 1px; border: 1px solid #d5c1ae; border-radius: 6px; background: white; color: #80695b; font-size: 10.5px; white-space: nowrap; }
+.manual-button.active-auto { background: #80695b; color: white; }
+.manual-button.active-ok { background: #6d967d; color: white; }
+.manual-button.active-consult { background: #c0392b; color: white; }
+.manual-button.active-ng { background: #a9493d; color: white; }
+.week-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.week-label { font-size: 12px; font-weight: 700; }
+.week-table-wrap { width: 100%; overflow-x: auto; }
+.week-table { width: 100%; border-collapse: collapse; table-layout: fixed; background: white; font-size: 10px; }
+.week-table th, .week-table td { border: 1px solid #d8c8bb; text-align: center; padding: 0; }
+.week-table th { height: 34px; background: #9d574c; color: white; font-weight: 700; font-size: 10px; }
+.week-table th:first-child { width: 44px; }
+.week-table td { height: 26px; font-weight: 800; font-size: 12px; }
+.time-cell { background: #fff7f0; color: #5b4032; font-size: 9px; }
+.cell-ok { background: #e9f4ed; color: #397354; }
+.cell-consult { background: #e9f4ed; color: #5b4032; font-size: 8px; font-weight: 700; }
+.cell-ng { background: #f2dfdc; color: #a9493d; }
+.cell-closed { background: #eee; color: #999; font-size: 9px; }
+.week-note { margin-top: 7px; text-align: center; font-size: 10px; color: #80695b; }
+.logout { width: 100%; padding: 9px; border: 1px solid #d5c1ae; border-radius: 8px; background: #fffaf5; color: #80695b; font-size: 12px; }
+.status-message { min-height: 18px; margin-top: 7px; font-size: 11px; text-align: center; }
+@media print {
+  body * { visibility: hidden; }
+  #printArea, #printArea * { visibility: visible; }
+  #printArea {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+  #printArea .week-table { font-size: 11px; }
+  #printArea .week-table th, #printArea .week-table td { height: 30px; }
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+}
+</style>
+</head>
+<body>
+<div class="page">
 
+<header class="header">
+  <div class="clinic">東村山 LIFE整体院</div>
+  <h1>管理者画面</h1>
+</header>
+
+<section id="loginScreen" class="card">
+  <h2>管理者認証</h2>
+  <div style="text-align:center;margin:8px 0 14px;">
+    <a href="/index.html" class="top-link">← トップに戻る</a>
+  </div>
+  <input id="password" class="password-input" type="password" inputmode="numeric" maxlength="8" placeholder="パスワード">
+  <button id="loginButton" class="primary-button">管理画面を開く</button>
+  <div id="loginError" class="login-error"></div>
+</section>
+
+<main id="adminScreen">
+  <div style="text-align:center;margin:0 0 14px;">
+    <a href="/index.html" class="top-link">← トップに戻る</a>
+  </div>
+
+  <section class="card">
+    <h2>手動○×設定（30分単位）</h2>
+    <div class="date-control">
+      <button id="prevDay" class="small-button">‹</button>
+      <input id="manualDate" type="date">
+      <button id="nextDay" class="small-button">›</button>
+    </div>
+    <div id="manualGrid"></div>
+    <div id="manualMessage" class="status-message"></div>
+  </section>
+
+  <section class="card">
+    <h2>週間予約確認</h2>
+    <div class="week-nav">
+      <button id="prevWeek" class="small-button">‹ 前週</button>
+      <div id="weekLabel" class="week-label"></div>
+      <button id="nextWeek" class="small-button">次週 ›</button>
+    </div>
+    <div id="printArea">
+      <h2 style="text-align:center;">週間予約票</h2>
+      <div id="printWeekLabel" style="text-align:center;font-size:13px;margin-bottom:8px;"></div>
+      <div class="week-table-wrap">
+        <table class="week-table">
+          <thead><tr id="weekHead"></tr></thead>
+          <tbody id="weekBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="week-note">○＝予約可能　×＝予約不可（△は使用しません）　※患者名は表示しません</div>
+    <button id="printWeekButton" class="small-button" style="width:100%;margin-top:10px;" type="button">週間予約票を印刷する</button>
+  </section>
+
+  <button id="logoutButton" class="logout">ログアウト</button>
+</main>
+
+</div>
