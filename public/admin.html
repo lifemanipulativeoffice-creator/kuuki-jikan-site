@@ -128,3 +128,225 @@ h2 { margin: 0 0 10px; font-size: 18px; }
 </main>
 
 </div>
+<script>
+'use strict';
+
+const PASSWORD = '0000';
+
+const loginScreen = document.getElementById('loginScreen');
+const adminScreen = document.getElementById('adminScreen');
+const passwordInput = document.getElementById('password');
+const loginButton = document.getElementById('loginButton');
+const loginError = document.getElementById('loginError');
+const manualDate = document.getElementById('manualDate');
+const manualGrid = document.getElementById('manualGrid');
+const manualMessage = document.getElementById('manualMessage');
+const weekHead = document.getElementById('weekHead');
+const weekBody = document.getElementById('weekBody');
+const weekLabel = document.getElementById('weekLabel');
+
+const TIME_SLOTS = [];
+for (let hour = 10; hour <= 21; hour++) {
+  const minutes = hour === 21 ? [0] : [0, 30];
+  minutes.forEach(m => TIME_SLOTS.push(String(hour).padStart(2,'0') + ':' + String(m).padStart(2,'0')));
+}
+
+let weekStart = getMonday(new Date());
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function formatDate(date) { return date.getFullYear() + '-' + pad(date.getMonth()+1) + '-' + pad(date.getDate()); }
+function addDays(date, days) { const d = new Date(date); d.setDate(d.getDate()+days); return d; }
+function getMonday(date) {
+  const d = new Date(date); d.setHours(0,0,0,0);
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  return d;
+}
+
+async function login() {
+  try {
+    const res = await fetch('/api/admin/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: passwordInput.value })
+    });
+    const result = await res.json();
+    if (result.ok) { openAdmin(); return; }
+  } catch (e) { }
+
+  if (passwordInput.value === PASSWORD) {
+    openAdmin();
+  } else {
+    loginError.textContent = 'パスワードが違います。';
+    passwordInput.value = '';
+  }
+}
+
+function openAdmin() {
+  loginScreen.style.display = 'none';
+  adminScreen.style.display = 'block';
+  manualDate.value = formatDate(new Date());
+  loadManual();
+  loadWeek();
+}
+
+loginButton.addEventListener('click', login);
+passwordInput.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+document.getElementById('logoutButton').addEventListener('click', () => {
+  adminScreen.style.display = 'none';
+  loginScreen.style.display = 'block';
+  passwordInput.value = '';
+});
+
+async function loadManual() {
+  const date = manualDate.value;
+  manualGrid.innerHTML = '';
+
+  try {
+    const response = await fetch('/api/manual-overrides?date=' + encodeURIComponent(date), { cache: 'no-store' });
+    const result = await response.json();
+    const overrides = result.data || {};
+
+    TIME_SLOTS.forEach(time => {
+      const current = overrides[time] || '';
+      const row = document.createElement('div');
+      row.className = 'manual-row';
+
+      const timeEl = document.createElement('div');
+      timeEl.className = 'manual-time';
+      timeEl.textContent = time;
+
+      const buttons = document.createElement('div');
+      buttons.className = 'manual-buttons';
+
+      [['自動',''], ['○','○'], ['要相談','△'], ['×','×']].forEach(([label, value]) => {
+        const button = document.createElement('button');
+        button.className = 'manual-button';
+        button.textContent = label;
+        if (value === current) {
+          const cls = value === '' ? 'active-auto'
+            : value === '○' ? 'active-ok'
+            : value === '△' ? 'active-consult'
+            : 'active-ng';
+          button.classList.add(cls);
+        }
+        button.addEventListener('click', () => setManual(date, time, value));
+        buttons.appendChild(button);
+      });
+
+      row.appendChild(timeEl);
+      row.appendChild(buttons);
+      manualGrid.appendChild(row);
+    });
+
+  } catch (error) {
+    manualMessage.textContent = '手動設定を取得できませんでした。';
+  }
+}
+
+async function setManual(date, time, status) {
+  try {
+    const response = await fetch('/api/manual-overrides', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, time, status })
+    });
+    const result = await response.json();
+    if (!result.ok) throw new Error(result.error || '保存できませんでした');
+
+    const labelMap = { '': '自動', '○': '○', '△': '要相談', '×': '×' };
+    manualMessage.textContent = time + ' を ' + (labelMap[status] || '自動') + ' に変更しました。';
+    await loadManual();
+    await loadWeek();
+  } catch (error) {
+    manualMessage.textContent = '保存できませんでした：' + error.message;
+  }
+}
+
+manualDate.addEventListener('change', loadManual);
+document.getElementById('prevDay').addEventListener('click', () => {
+  const d = new Date(manualDate.value); d.setDate(d.getDate() - 1);
+  manualDate.value = formatDate(d); loadManual();
+});
+document.getElementById('nextDay').addEventListener('click', () => {
+  const d = new Date(manualDate.value); d.setDate(d.getDate() + 1);
+  manualDate.value = formatDate(d); loadManual();
+});
+
+async function fetchDay(date) {
+  const response = await fetch('/api/availability/day?date=' + encodeURIComponent(formatDate(date)), { cache: 'no-store' });
+  const result = await response.json();
+  if (!response.ok || result.ok === false) throw new Error(result.error || '取得エラー');
+  return result.data;
+}
+
+function renderWeekHead(dates) {
+  const weekdays = ['日','月','火','水','木','金','土'];
+  weekHead.innerHTML = '<th>時間</th>' +
+    dates.map(d => '<th>' + (d.getMonth()+1) + '/' + d.getDate() + '<br>' + weekdays[d.getDay()] + '</th>').join('');
+}
+
+async function loadWeek() {
+  const dates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  weekLabel.textContent = formatDate(dates[0]) + ' ～ ' + formatDate(dates[6]);
+  const printWeekLabelEl = document.getElementById('printWeekLabel');
+  if (printWeekLabelEl) {
+    printWeekLabelEl.textContent = formatDate(dates[0]) + ' ～ ' + formatDate(dates[6]);
+  }
+  renderWeekHead(dates);
+  weekBody.innerHTML = '<tr><td colspan="8">読み込み中…</td></tr>';
+
+  try {
+    const results = await Promise.all(dates.map(date => fetchDay(date)));
+    weekBody.innerHTML = '';
+
+    TIME_SLOTS.forEach(timeValue => {
+      const tr = document.createElement('tr');
+      const time = document.createElement('td');
+      time.className = 'time-cell';
+      time.textContent = timeValue;
+      tr.appendChild(time);
+
+      results.forEach((data, index) => {
+        const td = document.createElement('td');
+        const date = dates[index];
+
+        if (date.getDay() === 0) {
+          td.className = 'cell-closed';
+          td.textContent = '休';
+        } else if (!data || !data.found) {
+          td.className = 'cell-closed';
+          td.textContent = '－';
+        } else {
+          const slot = (data.slots || []).find(s => s.time === timeValue);
+          const status = slot ? slot.status : 'full';
+          if (status === 'available') {
+            td.className = 'cell-ok';
+            td.textContent = '○';
+          } else if (status === 'consult') {
+            td.className = 'cell-consult';
+            td.textContent = '要相談';
+          } else {
+            td.className = 'cell-ng';
+            td.textContent = '×';
+          }
+        }
+
+        tr.appendChild(td);
+      });
+
+      weekBody.appendChild(tr);
+    });
+
+  } catch (error) {
+    weekBody.innerHTML = '<tr><td colspan="8">週間情報を取得できませんでした</td></tr>';
+  }
+}
+
+document.getElementById('prevWeek').addEventListener('click', () => { weekStart = addDays(weekStart, -7); loadWeek(); });
+document.getElementById('nextWeek').addEventListener('click', () => { weekStart = addDays(weekStart, 7); loadWeek(); });
+
+document.getElementById('printWeekButton').addEventListener('click', () => {
+  window.print();
+});
+</script>
+</body>
+</html>
