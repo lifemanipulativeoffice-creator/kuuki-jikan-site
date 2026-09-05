@@ -40,10 +40,20 @@ function getBlobStore() {
   return getStore(BLOB_STORE_NAME);
 }
 
+// Netlify Blobsへの通信が何らかの理由で応答を返さない場合に、
+// 原因不明のまま無限に待たされる状態を避けるためのタイムアウト付きラッパー。
+function withTimeout(promise, ms, label) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label}がタイムアウトしました（${ms}ms応答なし）`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
 async function readManualOverrides() {
   if (IS_NETLIFY) {
     const store = getBlobStore();
-    const data = await store.get(BLOB_KEY, { type: 'json' });
+    const data = await withTimeout(store.get(BLOB_KEY, { type: 'json' }), 8000, 'Blobsの読み取り');
     return data || {};
   }
 
@@ -59,7 +69,7 @@ async function readManualOverrides() {
 async function writeManualOverrides(data) {
   if (IS_NETLIFY) {
     const store = getBlobStore();
-    await store.setJSON(BLOB_KEY, data);
+    await withTimeout(store.setJSON(BLOB_KEY, data), 8000, 'Blobsの書き込み');
     return;
   }
 

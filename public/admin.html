@@ -245,11 +245,21 @@ async function loadManual() {
 }
 
 async function setManual(date, time, status) {
+  // タップした瞬間に必ず何か表示させる（無反応に見える状態をなくす）
+  manualMessage.textContent = '更新中…';
+
+  // 通信が固まって無反応に見える事態を防ぐため、10秒でタイムアウトさせる
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
   try {
     const response = await fetch('/api/manual-overrides', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, time, status })
+      body: JSON.stringify({ date, time, status }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
+
     const result = await response.json();
     if (!result.ok) throw new Error(result.error || '保存できませんでした');
 
@@ -258,7 +268,12 @@ async function setManual(date, time, status) {
     await loadManual();
     await loadWeek();
   } catch (error) {
-    manualMessage.textContent = '保存できませんでした：' + error.message;
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      manualMessage.textContent = '保存できませんでした：通信がタイムアウトしました（10秒応答なし）。';
+    } else {
+      manualMessage.textContent = '保存できませんでした：' + error.message;
+    }
   }
 }
 
