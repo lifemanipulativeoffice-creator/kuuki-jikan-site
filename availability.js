@@ -64,6 +64,13 @@ function serialToYmd(serial) {
   };
 }
 
+// serialToYmd の逆変換：年月日 → Googleスプレッドシートの日付シリアル値
+function ymdToSerial(year, month, day) {
+  const epoch = Date.UTC(1899, 11, 30);
+  const ms = Date.UTC(year, month - 1, day);
+  return Math.round((ms - epoch) / 86400000);
+}
+
 function parseMonthDayFromText(value) {
   const s = text(value).replace(/\s/g, '');
   if (!s) return null;
@@ -343,6 +350,7 @@ module.exports = {
   parseHourLabelToMinutes,
   buildColumnTimeMap,
   serialToYmd,
+  ymdToSerial,
   parseMonthDayFromText,
   findDayRows,
   classifyColor,
