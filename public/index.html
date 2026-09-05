@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LIFE整体院｜空き時間確認</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: #f5eee5;
+  color: #5b4032;
+  font-family: -apple-system, BlinkMacSystemFont, "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
+  line-height: 1.6;
+}
+.page { width: min(96vw, 720px); margin: 0 auto; padding: 18px 0 60px; }
+.header { text-align: center; margin-bottom: 16px; }
+.clinic { font-size: 12px; letter-spacing: .12em; color: #80695b; }
+h1 { margin: 3px 0 0; font-size: 24px; }
+.lead { font-size: 13px; color: #80695b; margin: 6px 0 0; }
+.card { background: #fffaf5; border: 1px solid #d5c1ae; border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+.date-section { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 8px; }
+.date-nav { width: 44px; height: 44px; border: 0; border-radius: 50%; background: #eaddcf; font-size: 22px; cursor: pointer; color: #5b4032; }
+.date-display { text-align: center; cursor: pointer; }
+#dateLabel { font-size: 19px; font-weight: 700; }
+#dateSubLabel { color: #999; font-size: 12px; }
+.legend { display: flex; justify-content: center; gap: 20px; margin: 14px 0; font-size: 13px; }
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.status-circle { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; font-size: 15px; flex: 0 0 26px; }
+.available { background: #e9f4ed; color: #397354; }
+.full { background: #eee; color: #999; }
+.time-section-title { margin: 0 0 8px; padding: 7px 10px; border-radius: 9px; background: #f4eee8; color: #80695b; font-size: 13px; font-weight: 700; }
+.time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.slot-item { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 10px; background: #fff; border: 1px solid #e8ddd4; border-radius: 9px; }
+.slot-item .slot-text { font-size: 14px; font-weight: 600; }
+.section-empty { grid-column: 1 / -1; padding: 14px; text-align: center; border-radius: 9px; background: #faf8f6; color: #9a8c82; font-size: 12px; }
+.loading, .error { padding: 20px; text-align: center; border-radius: 12px; }
+.loading { color: #80695b; }
+.error { background: #fdf0ee; color: #a9493d; border: 1px solid #eecac4; }
+.contact-area { display: flex; gap: 10px; margin-top: 20px; }
+.contact-button { flex: 1; min-height: 52px; display: flex; align-items: center; justify-content: center; border-radius: 11px; text-decoration: none; font-weight: 700; }
+.contact-button.line { background: #06c755; color: white; }
+.admin-link-area { text-align: center; margin-top: 22px; }
+.admin-link { font-size: 12px; color: #a89383; text-decoration: none; }
+.calendar-modal { display: none; position: fixed; inset: 0; background: rgba(91,64,50,.35); align-items: center; justify-content: center; padding: 20px; z-index: 100; }
+.calendar-modal.is-open { display: flex; }
+.calendar-box { width: 100%; max-width: 340px; background: #fffaf5; border-radius: 16px; padding: 18px; }
+.calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.calendar-month-button { width: 36px; height: 36px; border: 0; border-radius: 50%; background: #eaddcf; font-size: 18px; cursor: pointer; color: #5b4032; }
+.calendar-title { font-size: 15px; font-weight: 700; }
+.calendar-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 11px; color: #a89383; margin-bottom: 4px; }
+.calendar-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.calendar-day { aspect-ratio: 1; border: 0; border-radius: 8px; background: transparent; font-size: 13px; color: #5b4032; cursor: pointer; }
+.calendar-day:disabled { color: #d8cabb; cursor: default; }
+.calendar-day.today { border: 1px solid #9d574c; }
+.calendar-day.selected { background: #9d574c; color: white; font-weight: 700; }
+.calendar-close { width: 100%; margin-top: 12px; padding: 10px; border: 0; border-radius: 9px; background: #eaddcf; color: #5b4032; font-weight: 700; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="header">
+    <div class="clinic">東村山 LIFE整体院</div>
+    <h1>空き時間確認</h1>
+    <p class="lead">ご希望の日の空き時間をご確認いただけます</p>
+  </header>
+
+  <div class="card">
+    <div class="date-section">
+      <button id="prevDate" class="date-nav" type="button">‹</button>
+      <div class="date-display" id="dateDisplay">
+        <div id="dateLabel">読み込み中</div>
+        <div id="dateSubLabel"></div>
+      </div>
+      <button id="nextDate" class="date-nav" type="button">›</button>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><span class="status-circle available">○</span><span>予約可能</span></div>
+    <div class="legend-item"><span class="status-circle full">×</span><span>予約不可</span></div>
+  </div>
+
+  <div id="slotList"></div>
+
+  <div class="contact-area">
+    <a class="contact-button line" href="https://lin.ee/61mRZYN" target="_blank" rel="noopener">LINEで予約・問い合わせ</a>
+  </div>
+
+  <div class="admin-link-area">
+    <a href="/admin.html" class="admin-link">管理者画面</a>
+  </div>
+
+</div>
+
+<div id="calendarModal" class="calendar-modal" aria-hidden="true">
+  <div class="calendar-box" role="dialog" aria-modal="true" aria-label="日付を選択">
+    <div class="calendar-header">
+      <button id="calendarPrevMonth" class="calendar-month-button" type="button" aria-label="前の月">‹</button>
+      <div id="calendarTitle" class="calendar-title"></div>
+      <button id="calendarNextMonth" class="calendar-month-button" type="button" aria-label="次の月">›</button>
+    </div>
+    <div id="calendarWeekdays" class="calendar-weekdays"></div>
+    <div id="calendarDays" class="calendar-days"></div>
+    <button id="calendarClose" class="calendar-close" type="button">閉じる</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const dateLabel = document.getElementById('dateLabel');
+const dateSubLabel = document.getElementById('dateSubLabel');
+const slotList = document.getElementById('slotList');
+
+let selectedDate = getToday();
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function formatDate(d) { return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+function formatJapaneseDate(d) {
+  const wd = ['日','月','火','水','木','金','土'];
+  return d.getFullYear() + '年' + pad(d.getMonth()+1) + '月' + pad(d.getDate()) + '日（' + wd[d.getDay()] + '）';
+}
+function getToday() { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); }
+function isPastDate(d) {
+  const t = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return t < getToday();
+}
+
+async function fetchDay(date) {
+  const url = '/api/availability/day?date=' + encodeURIComponent(formatDate(date));
+  const response = await fetch(url, { cache: 'no-store' });
+  const data = await response.json();
+  if (!response.ok || data.ok === false) throw new Error(data.error || '通信エラー');
+  return data.data;
+}
+
+function renderSlots(detail) {
+  slotList.innerHTML = '';
+
+  if (!detail || !detail.found) {
+    slotList.innerHTML =
+      '<div class="card"><div class="section-empty">この日の空き状況は準備中です。恐れ入りますがLINEにてお問い合わせください。</div></div>';
+    return;
+  }
+
+  const slots = Array.isArray(detail.slots) ? detail.slots : [];
+
+  const sections = [
+    { title: '午前', min: '10:00', max: '11:30' },
+    { title: '日中', min: '12:00', max: '17:30' },
+    { title: '夜間', min: '18:00', max: '21:00' }
+  ];
+
+  sections.forEach(section => {
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    const heading = document.createElement('div');
+    heading.className = 'time-section-title';
+    heading.textContent = section.title;
+    card.appendChild(heading);
+
+    const grid = document.createElement('div');
+    grid.className = 'time-grid';
+
+    const visible = slots.filter(s =>
+      s.time >= section.min && s.time <= section.max &&
+      (s.status === 'available' || s.status === 'consult')
+    );
+
+    if (!visible.length) {
+      grid.innerHTML = '<div class="section-empty">空き時間はありません</div>';
+    } else {
+      visible.forEach(s => {
+        const row = document.createElement('div');
+        row.className = 'slot-item';
+        const consultLabel = s.status === 'consult'
+          ? '<span style="color:#c0392b;">（要相談）</span>'
+          : '';
+        row.innerHTML =
+          '<span class="status-circle available">○</span><span class="slot-text">' +
+          s.time + consultLabel + '</span>';
+        grid.appendChild(row);
+      });
+    }
+
+    card.appendChild(grid);
+    slotList.appendChild(card);
+  });
+}
+
+async function loadDay() {
+  dateLabel.textContent = formatJapaneseDate(selectedDate);
+  dateSubLabel.textContent = formatDate(selectedDate);
+  slotList.innerHTML = '<div class="card"><div class="loading">空き状況を確認しています…</div></div>';
+
+  try {
+    const detail = await fetchDay(selectedDate);
+    renderSlots(detail);
+  } catch (e) {
+    console.error('[LOAD DAY ERROR]', e);
+    slotList.innerHTML = '<div class="card"><div class="error">空き状況を取得できませんでした：' + e.message + '</div></div>';
+  }
+}
+
+document.getElementById('prevDate').addEventListener('click', () => {
+  const d = new Date(selectedDate);
+  d.setDate(d.getDate() - 1);
+  if (!isPastDate(d)) { selectedDate = d; loadDay(); }
+});
+document.getElementById('nextDate').addEventListener('click', () => {
+  const d = new Date(selectedDate);
+  d.setDate(d.getDate() + 1);
+  selectedDate = d;
+  loadDay();
+});
+
+const calendarModal = document.getElementById('calendarModal');
+const calendarTitle = document.getElementById('calendarTitle');
+const calendarDays = document.getElementById('calendarDays');
+const calendarWeekdaysEl = document.getElementById('calendarWeekdays');
+const calendarPrevMonth = document.getElementById('calendarPrevMonth');
+const calendarNextMonth = document.getElementById('calendarNextMonth');
+const calendarClose = document.getElementById('calendarClose');
+const dateDisplay = document.getElementById('dateDisplay');
+
+let calendarMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+
+function openCalendar() {
+  calendarMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+  renderCalendar();
+  calendarModal.classList.add('is-open');
+  calendarModal.setAttribute('aria-hidden', 'false');
+}
+function closeCalendar() {
+  calendarModal.classList.remove('is-open');
+  calendarModal.setAttribute('aria-hidden', 'true');
+}
+function renderCalendar() {
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  calendarTitle.textContent = year + '年' + (month + 1) + '月';
+
+  const weekdays = ['日','月','火','水','木','金','土'];
+  calendarWeekdaysEl.innerHTML = weekdays.map(w => '<div>' + w + '</div>').join('');
+  calendarDays.innerHTML = '';
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = getToday();
+
+  for (let i = 0; i < firstDay; i++) calendarDays.appendChild(document.createElement('div'));
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month, day);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'calendar-day';
+    button.textContent = String(day);
+
+    if (date.getTime() === today.getTime()) button.classList.add('today');
+    if (date.getFullYear() === selectedDate.getFullYear() && date.getMonth() === selectedDate.getMonth() && date.getDate() === selectedDate.getDate()) {
+      button.classList.add('selected');
+    }
+
+    if (date < today) {
+      button.disabled = true;
+    } else {
+      button.addEventListener('click', () => {
+        selectedDate = new Date(date);
+        closeCalendar();
+        loadDay();
+      });
+    }
+
+    calendarDays.appendChild(button);
+  }
+}
+
+dateDisplay.addEventListener('click', openCalendar);
+calendarPrevMonth.addEventListener('click', () => {
+  calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1);
+  renderCalendar();
+});
+calendarNextMonth.addEventListener('click', () => {
+  calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1);
+  renderCalendar();
+});
+calendarClose.addEventListener('click', closeCalendar);
+calendarModal.addEventListener('click', (e) => { if (e.target === calendarModal) closeCalendar(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCalendar(); });
+
+loadDay();
+</script>
+</body>
+</html>

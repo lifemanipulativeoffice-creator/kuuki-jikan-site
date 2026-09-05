@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+service-account-key.json
+node_modules/
+manual-overrides.json
+.netlify/
