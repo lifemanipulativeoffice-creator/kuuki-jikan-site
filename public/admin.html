@@ -230,7 +230,15 @@ async function loadManual() {
             : 'active-ng';
           button.classList.add(cls);
         }
-        button.addEventListener('click', () => setManual(date, time, value));
+        button.addEventListener('click', () => {
+          // ボタンが作られた時点の日付ではなく、押した瞬間の日付欄の値を必ず使う
+          const currentDate = manualDate.value;
+          if (!currentDate) {
+            manualMessage.textContent = '日付が選択されていません。日付を選び直してから、もう一度お試しください。';
+            return;
+          }
+          setManual(currentDate, time, value);
+        });
         buttons.appendChild(button);
       });
 
