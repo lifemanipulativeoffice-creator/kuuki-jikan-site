@@ -306,6 +306,48 @@ app.get('/api/availability/day', async (req, res) => {
   }
 });
 
+/*
+ * 週間分の空き状況APIを「1回のシート読み込み」でまとめて返す。
+ * これまでは7日分それぞれが個別に /api/availability/day を呼んでおり、
+ * 毎回シート全体の読み込みが発生して表示が遅かったため、
+ * シート読み込み（fetchSheetData）は1回だけ行い、
+ * そこから7日分すべての判定を行うように変更している。
+ */
+app.get('/api/availability/week', async (req, res) => {
+  try {
+    const { start } = req.query;
+    if (!start || !/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+      return res.status(400).json({ ok: false, error: 'start（YYYY-MM-DD）が指定されていません。' });
+    }
+
+    const gridData = await fetchSheetData();
+    const allManualOverrides = await manualOverridesStore.readManualOverrides();
+
+    const [y, m, d] = start.split('-').map(Number);
+    const startDate = new Date(y, m - 1, d);
+
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + i);
+      const dateStr =
+        date.getFullYear() + '-' +
+        String(date.getMonth() + 1).padStart(2, '0') + '-' +
+        String(date.getDate()).padStart(2, '0');
+
+      const manualOverrides = allManualOverrides[dateStr] || {};
+      const detail = availability.buildDayDetail(gridData, dateStr, manualOverrides);
+      days.push({ date: dateStr, data: detail });
+    }
+
+    res.json({ ok: true, days });
+
+  } catch (error) {
+    console.error('[WEEK API ERROR]', error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 // トラブルシューティング用：シートの生データを確認する
 app.get('/api/debug/sheet', async (req, res) => {
   try {
