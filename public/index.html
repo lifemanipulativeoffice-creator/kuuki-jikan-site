@@ -92,8 +92,6 @@ body {
       </div>
     </div>
 
-    <div class="week-note">○＝予約可能　×＝予約不可　※患者名は表示しません</div>
-    <button id="printWeekButton" class="small-button" style="width:100%;margin-top:10px;" type="button">週間予約票を印刷する</button>
   </div>
 
   <div class="legend">
@@ -209,7 +207,6 @@ async function loadWeek() {
 
 document.getElementById('prevWeek').addEventListener('click', () => { weekStart = addDays(weekStart, -7); loadWeek(); });
 document.getElementById('nextWeek').addEventListener('click', () => { weekStart = addDays(weekStart, 7); loadWeek(); });
-document.getElementById('printWeekButton').addEventListener('click', () => { window.print(); });
 
 loadWeek();
 </script>
