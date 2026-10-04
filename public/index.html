@@ -13,11 +13,9 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
   line-height: 1.6;
 }
-.page { width: min(96vw, 720px); margin: 0 auto; padding: 18px 0 60px; }
-.header { text-align: center; margin-bottom: 16px; }
-.clinic { font-size: 12px; letter-spacing: .12em; color: #80695b; }
-h1 { margin: 3px 0 0; font-size: 24px; }
-.lead { font-size: 13px; color: #80695b; margin: 6px 0 0; }
+.page { width: min(96vw, 720px); margin: 0 auto; padding: 12px 0 60px; }
+.header { text-align: center; margin-bottom: 12px; padding: 0 6px; }
+.header h1 { margin: 0; font-size: 19px; font-weight: 700; white-space: nowrap; }
 .card { background: #fffaf5; border: 1px solid #d5c1ae; border-radius: 14px; padding: 16px; margin-bottom: 14px; }
 
 .legend { display: flex; justify-content: center; gap: 20px; margin: 14px 0; font-size: 13px; }
@@ -54,12 +52,16 @@ h1 { margin: 3px 0 0; font-size: 24px; }
 .cell-closed { background: #eee; color: #999; font-size: 9px; }
 .week-note { margin-top: 7px; text-align: center; font-size: 10px; color: #80695b; }
 
+/* 印刷時だけ表示するラベル（画面上は上部の週ナビに同じ日付が出ているため非表示） */
+.print-only { display: none; }
+
 @media print {
   body * { visibility: hidden; }
   #printArea, #printArea * { visibility: visible; }
   #printArea { position: absolute; top: 0; left: 0; width: 100%; }
   #printArea .week-table { font-size: 11px; }
   #printArea .week-table th, #printArea .week-table td { height: 30px; }
+  .print-only { display: block; }
   @page { size: A4 portrait; margin: 12mm; }
 }
 </style>
@@ -68,9 +70,7 @@ h1 { margin: 3px 0 0; font-size: 24px; }
 <div class="page">
 
   <header class="header">
-    <div class="clinic">東村山 LIFE整体院</div>
-    <h1>空き時間確認</h1>
-    <p class="lead">今週・来週の空き時間をご確認いただけます</p>
+    <h1>東村山LIFE整体院 週間予約確認表</h1>
   </header>
 
   <div class="card">
@@ -81,7 +81,7 @@ h1 { margin: 3px 0 0; font-size: 24px; }
     </div>
 
     <div id="printArea">
-      <div id="printWeekLabel" style="text-align:center;font-size:13px;margin-bottom:8px;"></div>
+      <div id="printWeekLabel" class="print-only" style="text-align:center;font-size:13px;margin-bottom:8px;"></div>
       <div class="week-table-wrap">
         <table class="week-table">
           <thead><tr id="weekHead"></tr></thead>
