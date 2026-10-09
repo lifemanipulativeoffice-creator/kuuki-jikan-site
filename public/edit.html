@@ -406,7 +406,7 @@ const COLOR_LIST = [
   { key: 'blue',  label: '青',     sub: '埋まり' },
   { key: 'red',   label: '赤',     sub: '埋まり' },
   { key: 'gray',  label: 'グレー', sub: '埋まり' },
-  { key: 'light', label: '薄水色', sub: '空き扱い' },
+  { key: 'light', label: '薄水色', sub: '区切り（空き）' },
 ];
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 const TOKEN_KEYS = { main: 'yoyaku_chan_token', sub: 'yoyaku_chan2_token' };
@@ -507,7 +507,7 @@ $('loginForm').addEventListener('submit', async e => {
 /* ---------- 表の描画 ---------- */
 function renderLegend() {
   $('legend').innerHTML = COLOR_LIST.filter(c => c.key).map(c =>
-    '<span><i class="c-' + c.key + '"></i>' + c.label + (c.key === 'light' ? '（空き扱い）' : '') + '</span>').join('');
+    '<span><i class="c-' + c.key + '"></i>' + c.label + (c.key === 'light' ? '（区切り・空き）' : '') + '</span>').join('');
 }
 
 function render() {
@@ -1593,7 +1593,7 @@ async function renderStats() {
 // ・10:00より前・21:00より後の分も足す（ただし上限は11時間）
 // ・1日の稼働率 ＝ 埋まった時間 ÷ 11時間
 // ・月の稼働率 ＝ 各日の稼働率の平均（定休日・休診日は除く。「0%の日を除く」なら0%の日も除く）
-// ・グレー（休み・研修など）と薄水色（空き扱い）は数えない
+// ・グレー（休み・研修など）と薄水色（区切り）は数えない
 const UTIL_CAP = 11 * 60;
 function dayUtilization(date, day) {
   const filled = new Set();
