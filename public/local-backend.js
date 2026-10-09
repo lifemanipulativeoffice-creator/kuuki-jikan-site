@@ -65,8 +65,9 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
     if (auth !== 'Bearer demo-token') return reply({ ok: false, error: 'ログインしてください。' }, 401);
     if (url.pathname === '/api/edit/week') {
       const start = url.searchParams.get('start');
+      const nDays = Math.min(35, Math.max(7, Math.round(Number(url.searchParams.get('days')) || 7)));
       extendCopies && extendCopies();
-      return reply({ ok: true, times: TIMES, colors: COLORS, settings: (store.__meta && store.__meta.settings) || { lengths: [10, 20, 30, 60, 90, 120, 'all'], defaultLength: 60 }, days: Array.from({ length: 7 }, (_, i) => { const d = addD(start, i); return { date: d, day: JSON.parse(JSON.stringify(getDay(d))) }; }) });
+      return reply({ ok: true, times: TIMES, colors: COLORS, settings: (store.__meta && store.__meta.settings) || { lengths: [10, 20, 30, 60, 90, 120, 'all'], defaultLength: 60 }, days: Array.from({ length: nDays }, (_, i) => { const d = addD(start, i); return { date: d, day: JSON.parse(JSON.stringify(getDay(d))) }; }) });
     }
     if (url.pathname === '/api/edit/month') {
       const month = url.searchParams.get('month'); const ds = [];

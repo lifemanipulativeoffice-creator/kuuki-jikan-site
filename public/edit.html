@@ -103,6 +103,11 @@ table.grid { border-collapse: separate; border-spacing: 0; width: 100%; min-widt
 .c-gray  { background: var(--c-gray) !important; color: #fff; }
 .c-light { background: var(--c-light) !important; color: #3e5a60; }
 .grid td.cont { color: transparent; }
+/* 複数週の表示（タブレット・PC） */
+body.multi .grid thead th { font-size: 10px; height: 36px; }
+body.multi .grid thead th.sun { width: 24px; }
+body.multi .grid td { font-size: 10px; padding: 0 1px; }
+body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c; }
 .grid td.span { white-space: normal; word-break: break-all; overflow-wrap: anywhere; vertical-align: top; line-height: 1.25; padding: 4px 3px; }
 .grid td.rep::before { content: '↻'; font-size: 9px; margin-right: 1px; opacity: .8; }
 
@@ -483,7 +488,7 @@ function renderLegend() {
 
 function render() {
   const today = fmt(new Date());
-  $('weekLabel').textContent = label(days[0].date) + ' ～ ' + label(days[6].date);
+  $('weekLabel').textContent = label(days[0].date) + ' ～ ' + label(days[days.length - 1].date) + (days.length > 7 ? '（' + days.length / 7 + '週）' : '');
   updateYm();
 
   const head = $('gridHead');
@@ -491,8 +496,10 @@ function render() {
   days.forEach(({ date, day }) => {
     const th = document.createElement('th');
     const d = parse(date);
-    th.innerHTML = (d.getMonth() + 1) + '/' + d.getDate() + '<br>' + WD[d.getDay()] + (day.closed ? ' 休' : '');
+    const multi = days.length > 7;
+    th.innerHTML = (multi && d.getDay() === 0 ? d.getDate() : (d.getMonth() + 1) + '/' + d.getDate()) + '<br>' + WD[d.getDay()] + (day.closed ? (multi ? '' : ' 休') : '');
     if (d.getDay() === 0) th.classList.add('sun');
+    if (multi && d.getDay() === 1 && date !== days[0].date) th.classList.add('wk');
     if (day.closed) th.classList.add('closed-day');
     if (date === today) th.style.boxShadow = 'inset 0 -3px 0 #f2c14e';
     th.addEventListener('click', () => openDay(date));
@@ -534,6 +541,7 @@ function render() {
       if (spans[di].span[time]) { td.rowSpan = spans[di].span[time]; td.classList.add('span'); }
       const d = parse(date);
       if (d.getDay() === 0) td.classList.add('sun-col');
+      if (days.length > 7 && d.getDay() === 1 && di > 0) td.classList.add('wk');
       if (day.closed) td.classList.add('closed-col');
       if (cell && cell.c) td.classList.add('c-' + cell.c);
       if (cell && cell.n) td.textContent = cell.n;
@@ -552,8 +560,33 @@ $('gridBody').addEventListener('click', e => {
   if (td && td.dataset.date) openCell(td.dataset.date, td.dataset.time);
 });
 
+/* ---------- 端末ごとの表示期間（スマホ1週・タブレット2週・PC4週） ---------- */
+const VIEW_KEY = 'yoyaku_view_weeks';
+function autoWeeks() {
+  const w = window.innerWidth;
+  const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  if (w < 700) return 1;            // スマホ
+  if (touch || w < 1100) return 2;  // タブレット
+  return 4;                         // PC（今週から4週間＝月末なら当月の最終週と翌月3週）
+}
+function viewWeeks() {
+  let v = 0;
+  try { v = Number(localStorage.getItem(VIEW_KEY)); } catch {}
+  return [1, 2, 4].includes(v) ? v : autoWeeks();
+}
+let shownWeeks = viewWeeks();
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (viewWeeks() !== shownWeeks && getToken() && !$('appView').classList.contains('hidden')) loadWeek().catch(() => {});
+  }, 300);
+});
+
 async function loadWeek(scrollToBusiness) {
-  const r = await api('/api/edit/week?start=' + fmt(weekStart));
+  shownWeeks = viewWeeks();
+  document.body.classList.toggle('multi', shownWeeks > 1);
+  const r = await api('/api/edit/week?start=' + fmt(weekStart) + '&days=' + shownWeeks * 7);
   times = r.times; days = r.days;
   if (r.settings) settings = r.settings;
   $('pwWarn').classList.toggle('hidden', !(r.auth && r.auth.isDefault));
@@ -1378,7 +1411,16 @@ async function pageSettings() {
   pageBody().innerHTML = '<div class="pg-card"><h3>予約の長さの選択肢</h3><p class="sub">枠をタップしたときに選べる長さです。スマホ・PCで共通です。</p>' +
     '<div class="checks" id="lenChecks">' + LENGTH_CHOICES.map(v => '<label><input type="checkbox" value="' + v + '"' + (settings.lengths.includes(v) ? ' checked' : '') + '>' + lenText(v) + '</label>').join('') + '</div>' +
     '<div class="pg-row" style="margin-top:14px"><label>空き枠をタップしたときの初期の長さ<select id="defLen"></select></label></div>' +
-    '<div class="actions" style="margin-top:14px"><button class="btn primary" type="button" id="setSave">保存</button></div></div>';
+    '<div class="actions" style="margin-top:14px"><button class="btn primary" type="button" id="setSave">保存</button></div></div>' +
+    '<div class="pg-card"><h3>この端末の表示期間</h3><p class="sub">予約表に何週間分を並べるか。この端末だけの設定です（今の自動判定：' + autoWeeks() + '週）。</p>' +
+    '<div class="pg-row"><label>表示期間<select id="viewWeeks">' +
+    [['', '自動（スマホ1週・タブレット2週・PC4週）'], ['1', '1週間'], ['2', '2週間'], ['4', '4週間']].map(([v, t]) => '<option value="' + v + '">' + t + '</option>').join('') +
+    '</select></label></div></div>';
+  try { $('viewWeeks').value = localStorage.getItem(VIEW_KEY) || ''; } catch {}
+  $('viewWeeks').addEventListener('change', () => {
+    try { $('viewWeeks').value ? localStorage.setItem(VIEW_KEY, $('viewWeeks').value) : localStorage.removeItem(VIEW_KEY); } catch {}
+    toast('この端末の表示を' + viewWeeks() + '週間にしました');
+  });
   const refreshDef = () => {
     const chosen = [...document.querySelectorAll('#lenChecks input:checked')].map(i => i.value === 'all' ? 'all' : Number(i.value));
     const cur = $('defLen').value || String(settings.defaultLength);
