@@ -1437,35 +1437,55 @@ async function renderStats() {
   }));
 }
 
-/* 稼働率 */
-const OPEN_MIN = 10 * 60, CLOSE_MIN = 21 * 60;
+/* 稼働率（会計くんと同じ計算方法） */
+// ・対象は 10:00〜21:00 の11時間（660分）
+// ・予約1件の長さは30分単位に切り上げ、開始時刻から10分マスを埋める
+// ・人が重なった時間は1回だけ数える
+// ・10:00より前・21:00より後の分も足す（ただし上限は11時間）
+// ・1日の稼働率 ＝ 埋まった時間 ÷ 11時間
+// ・月の稼働率 ＝ 各日の稼働率の平均（定休日・休診日は除く。「0%の日を除く」なら0%の日も除く）
+// ・グレー（休み・研修など）と薄水色（空き扱い）は数えない
+const UTIL_CAP = 11 * 60;
+function dayUtilization(date, day) {
+  const filled = new Set();
+  extractBookings(date, day)
+    .filter(b => b.color !== 'gray' && b.color !== 'light')
+    .forEach(b => {
+      const len = Math.ceil(b.minutes / 30) * 30;
+      for (let m = toMin(b.start); m < toMin(b.start) + len; m += 10) filled.add(m);
+    });
+  const minutes = Math.min(filled.size * 10, UTIL_CAP);
+  return { minutes, rate: minutes / UTIL_CAP };
+}
+let utilExcludeZero = false;
 async function pageUtil() {
   pageBody().innerHTML = '<div class="pg-card">' + monthPicker('utilMonth', renderUtil) +
-    '<p class="sub" style="margin:10px 0 0" id="utilFormula"></p></div><div id="utilOut" class="pg"></div>';
+    '<label class="toggle-row" style="margin-top:10px"><span>0%の日を除いて平均する</span><input type="checkbox" id="utilZero"' + (utilExcludeZero ? ' checked' : '') + '></label>' +
+    '<p class="sub" style="margin:10px 0 0">会計くんと同じ計算です。予約1件は30分単位に切り上げ、人が重なった時間は1回だけ数えます。1日の稼働率＝埋まった時間÷11時間（10:00〜21:00。時間外の分も足し、上限11時間）。月の稼働率＝各日の稼働率の平均（日曜・休診日は除く）。グレー・薄水色の枠は数えません。</p></div>' +
+    '<div id="utilOut" class="pg"></div>';
+  $('utilZero').addEventListener('change', () => { utilExcludeZero = $('utilZero').checked; renderUtil(); });
   await renderUtil();
 }
 async function renderUtil() {
   const month = $('utilMonth').value; if (!month) return;
   const r = await api('/api/edit/month?month=' + month);
-  const capPerDay = CLOSE_MIN - OPEN_MIN;
-  let sumBooked = 0, sumCap = 0;
+  if (r.times) times = r.times;
   const rows = r.days.map(({ date, day }) => {
     const open = parse(date).getDay() !== 0 && !day.closed;
-    let booked = 0;
-    if (open) for (let m = OPEN_MIN; m < CLOSE_MIN; m += 10) { const c = day.cells[toTime(m)]; if (c && c.c && c.c !== 'gray' && c.c !== 'light') booked += 10; }
-    if (open) { sumBooked += booked; sumCap += capPerDay; }
-    return { date, open, booked };
+    return Object.assign({ date, open }, open ? dayUtilization(date, day) : { minutes: 0, rate: 0 });
   });
-  const pct = (a, b) => b ? (a / b * 100).toFixed(1) : '0.0';
-  $('utilFormula').textContent = '稼働率 ＝ 予約が入っている時間 ÷ 営業時間（10:00〜21:00 × 営業日）。グレー・薄水色の枠、日曜・休診日は除きます。';
+  const counted = rows.filter(x => x.open && !(utilExcludeZero && x.minutes === 0));
+  const avg = counted.length ? counted.reduce((a, x) => a + x.rate, 0) / counted.length : 0;
+  const total = counted.reduce((a, x) => a + x.minutes, 0);
+  const pct = v => (v * 100).toFixed(1);
   $('utilOut').innerHTML = '<div class="pg-card"><div class="stat-tiles">' +
-    '<div class="tile"><div class="k">月の稼働率</div><div class="v">' + pct(sumBooked, sumCap) + '<small>%</small></div></div>' +
-    '<div class="tile"><div class="k">予約時間</div><div class="v">' + Math.floor(sumBooked / 60) + '<small>時間' + (sumBooked % 60 ? sumBooked % 60 + '分' : '') + '</small></div></div>' +
-    '<div class="tile"><div class="k">営業時間</div><div class="v">' + sumCap / 60 + '<small>時間</small></div></div>' +
+    '<div class="tile"><div class="k">月の稼働率（日の平均）</div><div class="v">' + pct(avg) + '<small>%</small></div></div>' +
+    '<div class="tile"><div class="k">稼働した時間</div><div class="v">' + Math.floor(total / 60) + '<small>時間' + (total % 60 ? total % 60 + '分' : '') + '</small></div></div>' +
+    '<div class="tile"><div class="k">平均に入れた日</div><div class="v">' + counted.length + '<small>日</small></div></div>' +
     '<div class="tile"><div class="k">営業日</div><div class="v">' + rows.filter(x => x.open).length + '<small>日</small></div></div></div></div>' +
-    '<div class="pg-card"><h3>日ごとの稼働率</h3><div class="pg-table-wrap"><table class="pg-table"><thead><tr><th>日付</th><th>予約時間</th><th>稼働率</th><th></th></tr></thead><tbody>' +
-    rows.map(x => x.open ? '<tr><td>' + label(x.date) + '</td><td class="num">' + (x.booked / 60).toFixed(1) + 'h</td><td class="num">' + pct(x.booked, capPerDay) + '%</td><td style="width:40%"><div class="bar"><i style="width:' + pct(x.booked, capPerDay) + '%"></i></div></td></tr>'
-      : '<tr><td>' + label(x.date) + '</td><td colspan="3" style="color:#a08a7b">休</td></tr>').join('') +
+    '<div class="pg-card"><h3>日ごとの稼働率</h3><div class="pg-table-wrap"><table class="pg-table"><thead><tr><th>日付</th><th>稼働した時間</th><th>稼働率</th><th></th></tr></thead><tbody>' +
+    rows.map(x => !x.open ? '<tr><td>' + label(x.date) + '</td><td colspan="3" style="color:#a08a7b">休</td></tr>'
+      : '<tr' + (utilExcludeZero && x.minutes === 0 ? ' style="color:#b9a89a"' : '') + '><td>' + label(x.date) + '</td><td class="num">' + (x.minutes / 60).toFixed(1) + 'h</td><td class="num">' + pct(x.rate) + '%</td><td style="width:40%"><div class="bar"><i style="width:' + pct(x.rate) + '%"></i></div></td></tr>').join('') +
     '</tbody></table></div></div>';
 }
 
