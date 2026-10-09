@@ -1,0 +1,23 @@
+{
+  "name": "yoyaku-chan-desktop",
+  "productName": "予約ちゃん",
+  "version": "1.0.0",
+  "private": true,
+  "description": "予約ちゃん PC版（Netlify上の予約ちゃんを専用ウィンドウで開く）",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "jp.life-seitai.yoyaku-chan",
+    "productName": "予約ちゃん",
+    "files": ["main.js", "preload.js", "offline.html", "config.json", "build/icon.png"],
+    "win": { "target": "nsis", "icon": "build/icon.ico" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "shortcutName": "予約ちゃん" }
+  }
+}

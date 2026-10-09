@@ -1,0 +1,15 @@
+{
+  "name": "予約ちゃん（東村山LIFE整体院）",
+  "short_name": "予約ちゃん",
+  "start_url": "/edit.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f5eee5",
+  "theme_color": "#9d574c",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

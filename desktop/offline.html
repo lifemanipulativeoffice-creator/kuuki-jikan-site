@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8"><title>予約ちゃん</title>
+<style>
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5eee5;color:#5b4032;font-family:"Yu Gothic",Meiryo,sans-serif}
+.card{background:#fffaf5;border:1px solid #d5c1ae;border-radius:16px;padding:28px 26px;max-width:420px;text-align:center}
+button{min-height:44px;padding:10px 22px;border:0;border-radius:10px;background:#9d574c;color:#fff;font-weight:700;font-size:15px;cursor:pointer}
+p{font-size:14px;line-height:1.7}
+</style></head><body><div class="card">
+<h2>予約ちゃん</h2>
+<p id="msg">インターネットにつながっていないため、予約表を開けませんでした。<br>接続を確認してから「もう一度開く」を押してください。</p>
+<button id="retry">もう一度開く</button>
+</div>
+<script>
+const q = new URLSearchParams(location.search);
+if (q.get('setup')) {
+  document.getElementById('msg').innerHTML = 'config.json に予約ちゃんのURLが設定されていません。<br>（例）https://xxxx.netlify.app/edit.html';
+  document.getElementById('retry').style.display = 'none';
+}
+document.getElementById('retry').onclick = () => { if (q.get('url')) location.href = q.get('url'); };
+</script></body></html>

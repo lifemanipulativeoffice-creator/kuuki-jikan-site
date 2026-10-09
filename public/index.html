@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LIFE整体院｜空き時間確認</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: #f5eee5;
+  color: #5b4032;
+  font-family: -apple-system, BlinkMacSystemFont, "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
+  line-height: 1.6;
+}
+.page { width: min(96vw, 720px); margin: 0 auto; padding: 12px 0 60px; }
+.header { text-align: center; margin-bottom: 12px; padding: 0 6px; }
+.header h1 { margin: 0; font-size: 19px; font-weight: 700; white-space: nowrap; }
+.card { background: #fffaf5; border: 1px solid #d5c1ae; border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+
+.legend { display: flex; justify-content: center; gap: 20px; margin: 14px 0; font-size: 13px; flex-wrap: wrap; }
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.status-circle { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; font-size: 15px; flex: 0 0 26px; }
+.available { background: #e9f4ed; color: #397354; }
+.consult { background: #e9f4ed; color: #5b4032; font-size: 10px; width: auto; flex: 0 0 auto; white-space: nowrap; padding: 0 8px; border-radius: 13px; }
+.full { background: #f2dfdc; color: #a9493d; }
+
+.contact-area { display: flex; gap: 10px; margin-top: 20px; }
+.contact-button { flex: 1; min-height: 52px; display: flex; align-items: center; justify-content: center; border-radius: 11px; text-decoration: none; font-weight: 700; }
+.contact-button.line { background: #06c755; color: white; }
+
+.admin-link-area { text-align: center; margin-top: 22px; }
+.admin-link { font-size: 12px; color: #a89383; text-decoration: none; }
+
+.week-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.week-label { font-size: 12px; font-weight: 700; color: #80695b; }
+.small-button { padding: 9px 11px; border: 1px solid #d5c1ae; border-radius: 8px; background: #fff; color: #5b4032; font-weight: 700; cursor: pointer; }
+.week-table-wrap { width: 100%; overflow-x: auto; }
+.week-table { width: 100%; border-collapse: collapse; table-layout: fixed; background: white; font-size: 10px; }
+.week-table th, .week-table td { border: 1px solid #d8c8bb; text-align: center; padding: 0; }
+.week-table th { height: 34px; background: #9d574c; color: white; font-weight: 700; font-size: 10px; }
+.week-table th:first-child { width: 44px; }
+.week-table td { height: 26px; font-weight: 800; font-size: 12px; }
+.time-cell { background: #fff7f0; color: #5b4032; font-size: 9px; }
+.cell-ok { background: #e9f4ed; color: #397354; }
+.cell-consult { background: #e9f4ed; color: #5b4032; font-size: 8px; font-weight: 700; }
+.cell-ng { background: #f2dfdc; color: #a9493d; }
+.cell-closed { background: #eee; color: #999; font-size: 9px; }
+
+.print-only { display: none; }
+@media print {
+  body * { visibility: hidden; }
+  #printArea, #printArea * { visibility: visible; }
+  #printArea { position: absolute; top: 0; left: 0; width: 100%; }
+  #printArea .week-table { font-size: 11px; }
+  #printArea .week-table th, #printArea .week-table td { height: 30px; }
+  .print-only { display: block; }
+  @page { size: A4 portrait; margin: 12mm; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="header">
+    <h1>東村山LIFE整体院 週間予約確認表</h1>
+  </header>
+
+  <div class="card">
+    <div class="week-nav">
+      <button id="prevWeek" class="small-button" type="button">‹ 前週</button>
+      <div id="weekLabel" class="week-label"></div>
+      <button id="nextWeek" class="small-button" type="button">次週 ›</button>
+    </div>
+
+    <div id="printArea">
+      <div id="printWeekLabel" class="print-only" style="text-align:center;font-size:13px;margin-bottom:8px;"></div>
+      <div class="week-table-wrap">
+        <table class="week-table">
+          <thead><tr id="weekHead"></tr></thead>
+          <tbody id="weekBody"><tr><td colspan="8">読み込み中…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><span class="status-circle available">○</span><span>予約可能</span></div>
+    <div class="legend-item"><span class="status-circle consult">要相談</span><span>時間調整が必要</span></div>
+    <div class="legend-item"><span class="status-circle full">×</span><span>予約不可</span></div>
+  </div>
+
+  <div class="contact-area">
+    <a class="contact-button line" href="https://lin.ee/61mRZYN" target="_blank" rel="noopener">LINEで予約・問い合わせ</a>
+  </div>
+
+  <div class="admin-link-area">
+    <a href="/edit.html" class="admin-link">スタッフ用</a>
+  </div>
+</div>
+
+<script>
+'use strict';
+const weekHead = document.getElementById('weekHead');
+const weekBody = document.getElementById('weekBody');
+const weekLabel = document.getElementById('weekLabel');
+const printWeekLabel = document.getElementById('printWeekLabel');
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function formatDate(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function getMonday(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); const w = x.getDay(); x.setDate(x.getDate() + (w === 0 ? -6 : 1 - w)); return x; }
+
+let weekStart = getMonday(new Date());
+
+async function loadWeek() {
+  const dates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const label = formatDate(dates[0]) + ' ～ ' + formatDate(dates[6]);
+  weekLabel.textContent = label;
+  printWeekLabel.textContent = label;
+  const wd = ['日', '月', '火', '水', '木', '金', '土'];
+  weekHead.innerHTML = '<th>時間</th>' + dates.map(d => '<th>' + (d.getMonth() + 1) + '/' + d.getDate() + '<br>' + wd[d.getDay()] + '</th>').join('');
+  weekBody.innerHTML = '<tr><td colspan="8">読み込み中…</td></tr>';
+
+  try {
+    const res = await fetch('/api/week?start=' + formatDate(weekStart), { cache: 'no-store' });
+    const json = await res.json();
+    if (!res.ok || !json.ok) throw new Error(json.error || '取得エラー');
+    const days = json.days;
+    const times = days[0].slots.map(s => s.time);
+    weekBody.innerHTML = '';
+    times.forEach((time, row) => {
+      const tr = document.createElement('tr');
+      const th = document.createElement('td');
+      th.className = 'time-cell';
+      th.textContent = time;
+      tr.appendChild(th);
+      days.forEach((day, i) => {
+        const td = document.createElement('td');
+        const status = day.slots[row].status;
+        if (dates[i].getDay() === 0) { td.className = 'cell-closed'; td.textContent = '休'; }
+        else if (status === 'none') { td.className = 'cell-closed'; td.textContent = '－'; }
+        else if (day.closed) { td.className = 'cell-closed'; td.textContent = '休'; }
+        else if (status === 'available') { td.className = 'cell-ok'; td.textContent = '○'; }
+        else if (status === 'consult') { td.className = 'cell-consult'; td.textContent = '要相談'; }
+        else { td.className = 'cell-ng'; td.textContent = '×'; }
+        tr.appendChild(td);
+      });
+      weekBody.appendChild(tr);
+    });
+  } catch (e) {
+    console.error(e);
+    weekBody.innerHTML = '<tr><td colspan="8">週間情報を取得できませんでした</td></tr>';
+  }
+}
+
+document.getElementById('prevWeek').addEventListener('click', () => { weekStart = addDays(weekStart, -7); loadWeek(); });
+document.getElementById('nextWeek').addEventListener('click', () => { weekStart = addDays(weekStart, 7); loadWeek(); });
+loadWeek();
+</script>
+</body>
+</html>

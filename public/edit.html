@@ -1,0 +1,1644 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>予約ちゃん</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#9d574c">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="予約ちゃん">
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  background: #f5eee5; color: #5b4032;
+  font-family: -apple-system, BlinkMacSystemFont, "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
+  line-height: 1.5; -webkit-tap-highlight-color: transparent;
+}
+button, input, select { font: inherit; color: inherit; }
+.hidden { display: none !important; }
+[hidden] { display: none !important; }
+
+/* 色（スプレッドシートの色に近づけた見本） */
+:root {
+  --c-pink: #f59bd6; --c-blue: #5b8fe6; --c-red: #ef5a5a; --c-gray: #7d7d7d; --c-light: #d3e4e8;
+  --brown: #9d574c; --line: #d8c8bb; --paper: #fffaf5;
+}
+
+/* ログイン（予約ちゃんのイラスト） */
+.login-wrap { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 16px; background: #fff; }
+.login-card { width: min(100%, 380px); display: grid; gap: 12px; text-align: center; }
+.login-art { width: 100%; height: auto; max-height: 52vh; object-fit: contain; display: block; margin: 0 auto; }
+.login-sub { margin: -4px 0 2px; font-size: 13px; font-weight: 700; color: #b3261e; letter-spacing: .08em; }
+.login-input { width: 100%; padding: 14px 16px; border: 2px solid #e8b9b4; border-radius: 14px; background: #fff; font-size: 18px; color: #3b2a22; }
+.login-input:focus { outline: none; border-color: #d7261e; box-shadow: 0 0 0 3px rgba(215,38,30,.15); }
+.login-btn { width: 100%; min-height: 54px; border: 0; border-radius: 999px; background: #d7261e; color: #fff; font-size: 19px; font-weight: 800; letter-spacing: .2em; cursor: pointer; box-shadow: 0 4px 0 #a51b14; }
+.login-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #a51b14; }
+.login-btn:disabled { opacity: .6; }
+.login-btn:focus-visible { outline: 3px solid #f2c14e; outline-offset: 2px; }
+.login-error { color: #b3261e; font-size: 14px; font-weight: 700; }
+.login-note { font-size: 12px; color: #8a5a50; background: #fff5f3; border: 1px solid #f0cdc8; border-radius: 10px; padding: 8px 10px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.pw-warn { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; padding: 7px 10px; background: #fff3d6; border-bottom: 1px solid #ecd49a; color: #6b4e12; font-size: 12px; font-weight: 700; }
+.pw-warn .btn { min-height: 30px; padding: 3px 10px; font-size: 12px; }
+.menu-list .logout { color: #b3261e; }
+
+.btn { min-height: 44px; padding: 10px 14px; border: 1px solid #d5c1ae; border-radius: 10px; background: #fff; font-weight: 700; cursor: pointer; }
+.btn.primary { background: var(--brown); border-color: var(--brown); color: #fff; }
+.btn.danger { color: #a9493d; border-color: #eecac4; background: #fdf0ee; }
+.btn.wide { width: 100%; }
+.btn:disabled { opacity: .55; cursor: default; }
+
+/* 画面上部 */
+.app { height: 100%; display: flex; flex-direction: column; }
+.topbar { padding: 8px 10px calc(6px); padding-top: max(8px, env(safe-area-inset-top)); background: var(--paper); border-bottom: 1px solid #e3d3c4; }
+.topline { display: flex; align-items: center; gap: 8px; }
+.brand { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 16px; flex: 1; min-width: 0; }
+.brand img { width: 28px; height: 28px; border-radius: 8px; }
+.brand-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ympick { position: relative; }
+#ymBtn { min-height: 38px; padding: 6px 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ym-panel { position: absolute; right: 0; top: 46px; z-index: 35; width: 264px; background: #fff; border: 1px solid #d5c1ae; border-radius: 14px; box-shadow: 0 8px 24px rgba(91,64,50,.18); padding: 10px; }
+.ym-year { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 16px; }
+.ym-year .btn { min-height: 36px; padding: 4px 14px; }
+.ym-months { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ym-months button { min-height: 40px; border: 1px solid #e3d3c4; border-radius: 9px; background: #fffaf5; font-weight: 700; cursor: pointer; }
+.ym-months button.on { background: var(--brown); border-color: var(--brown); color: #fff; }
+.ym-months button.now { box-shadow: inset 0 -3px 0 #f2c14e; }
+@media (max-width: 430px) { .brand { gap: 5px; } .brand-name { font-size: 13px; } }
+.weeknav { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
+.weeknav .label { flex: 1; text-align: center; font-size: 13px; font-weight: 700; color: #80695b; }
+.weeknav .btn { min-height: 38px; padding: 6px 10px; }
+.menu { position: relative; }
+.menu-list { position: absolute; right: 0; top: 46px; z-index: 30; background: #fff; border: 1px solid #d5c1ae; border-radius: 12px; box-shadow: 0 8px 24px rgba(91,64,50,.18); min-width: 210px; padding: 6px; }
+.menu-list button, .menu-list a { display: block; width: 100%; text-align: left; padding: 11px 12px; border: 0; background: none; border-radius: 8px; font-weight: 600; text-decoration: none; color: inherit; cursor: pointer; font-size: 14px; }
+.menu-list button:hover, .menu-list a:hover { background: #f7efe7; }
+.menu-list hr { border: 0; border-top: 1px solid #eee2d6; margin: 4px 0; }
+
+/* 予約表 */
+.grid-wrap { flex: 1; overflow: auto; background: #fff; -webkit-overflow-scrolling: touch; }
+table.grid { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 360px; table-layout: fixed; font-size: 11px; }
+.grid th, .grid td { border-right: 1px solid var(--line); border-bottom: 1px solid #eadfd5; padding: 0; }
+.grid thead th { position: sticky; top: 0; z-index: 3; background: var(--brown); color: #fff; height: 40px; font-size: 11px; font-weight: 700; cursor: pointer; line-height: 1.25; }
+.grid thead th.sun { background: #b88d86; }
+.grid thead th.closed-day { background: #8f8f8f; }
+.grid thead th:first-child { left: 0; z-index: 4; width: 42px; cursor: default; }
+.grid tbody th { position: sticky; left: 0; z-index: 2; background: #fff7f0; font-weight: 600; font-size: 10px; color: #80695b; width: 42px; height: 24px; text-align: center; }
+.grid tr.hour td, .grid tr.hour th { border-top: 1px solid #c9b3a2; }
+.grid tr.outside th { color: #c0aea0; }
+.grid tr.outside td { background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(157,87,76,.05) 5px 7px); }
+.grid td { height: 24px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: clip; padding: 0 2px; font-weight: 700; position: relative; }
+.grid td:hover { outline: 2px solid rgba(157,87,76,.35); outline-offset: -2px; }
+.grid td.now { box-shadow: inset 0 2px 0 #e0a100; }
+.grid td.sun-col { background-color: #f6f1ee; }
+.grid td.closed-col { background-color: #eeeeee; }
+.c-pink  { background: var(--c-pink) !important; color: #4a1d3c; }
+.c-blue  { background: var(--c-blue) !important; color: #fff; }
+.c-red   { background: var(--c-red) !important; color: #fff; }
+.c-gray  { background: var(--c-gray) !important; color: #fff; }
+.c-light { background: var(--c-light) !important; color: #3e5a60; }
+.grid td.cont { color: transparent; }
+.grid td.span { white-space: normal; word-break: break-all; overflow-wrap: anywhere; vertical-align: top; line-height: 1.25; padding: 4px 3px; }
+.grid td.rep::before { content: '↻'; font-size: 9px; margin-right: 1px; opacity: .8; }
+
+.legend { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; padding: 6px 8px; padding-bottom: max(6px, env(safe-area-inset-bottom)); font-size: 11px; background: var(--paper); border-top: 1px solid #e3d3c4; }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.legend i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; border: 1px solid rgba(0,0,0,.08); }
+
+/* モーダル（スマホでは下から出る） */
+.overlay { position: fixed; inset: 0; background: rgba(60,40,30,.42); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { width: min(100vw, 460px); background: var(--paper); border-radius: 18px 18px 0 0; padding: 18px 16px; padding-bottom: max(18px, env(safe-area-inset-bottom)); max-height: 92vh; overflow: auto; }
+@media (min-width: 700px) { .overlay { align-items: center; } .sheet { border-radius: 18px; } }
+.sheet h2 { margin: 0 0 12px; font-size: 17px; }
+.field { margin-bottom: 14px; }
+.field > label, .field-label { display: block; font-size: 12px; font-weight: 700; color: #80695b; margin-bottom: 6px; }
+.swatches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.swatch { min-height: 46px; border-radius: 10px; border: 2px solid transparent; font-weight: 700; cursor: pointer; font-size: 13px; }
+.swatch.none { background: #fff; border-color: #d5c1ae; }
+.swatch[aria-pressed="true"] { border-color: #5b4032; box-shadow: 0 0 0 2px #fff inset; }
+.swatch small { display: block; font-size: 9px; font-weight: 600; opacity: .85; }
+.text-input, select.text-input { width: 100%; padding: 12px; border: 1px solid #d5c1ae; border-radius: 10px; background: #fff; font-size: 16px; }
+.hint { font-size: 11px; color: #a07c6a; margin-top: 4px; }
+.warn { font-size: 12px; color: #a9493d; background: #fdf0ee; border: 1px solid #eecac4; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+.actions { display: flex; gap: 8px; margin-top: 6px; }
+.actions .btn { flex: 1; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #fff; border: 1px solid #e3d3c4; border-radius: 10px; }
+.toggle-row input { width: 22px; height: 22px; }
+
+.toast { position: fixed; left: 50%; bottom: 70px; transform: translateX(-50%); background: #5b4032; color: #fff; padding: 10px 16px; border-radius: 22px; font-size: 13px; z-index: 80; max-width: 90vw; box-shadow: 0 6px 18px rgba(0,0,0,.2); }
+.toast.error { background: #a9493d; }
+.saving { position: fixed; top: 8px; right: 10px; font-size: 11px; background: #fff; border: 1px solid #d5c1ae; padding: 3px 10px; border-radius: 12px; z-index: 60; }
+/* 月の予約記録（A4横） */
+.report-overlay { position: fixed; inset: 0; z-index: 70; background: #e9e0d6; display: flex; flex-direction: column; }
+.report-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top)); background: var(--paper); border-bottom: 1px solid #e3d3c4; }
+.report-bar .title { font-weight: 800; margin-right: auto; }
+.report-bar input[type=month] { padding: 8px; border: 1px solid #d5c1ae; border-radius: 8px; background: #fff; }
+.report-scroll { flex: 1; overflow: auto; padding: 14px; }
+.report-note { font-size: 12px; color: #80695b; margin: 0 0 10px; }
+.report-scroll .a4 { zoom: var(--a4zoom, 1); }
+.a4 { width: 297mm; height: 210mm; padding: 10mm 12mm; background: #fff; color: #222; margin: 0 auto 14px; box-shadow: 0 2px 10px rgba(0,0,0,.15); overflow: hidden; display: flex; flex-direction: column; font-size: 9pt; }
+.a4-head { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 1.5pt solid #9d574c; padding-bottom: 2mm; margin-bottom: 3mm; }
+.a4-head h1 { font-size: 15pt; margin: 0; color: #5b4032; }
+.a4-head .meta { font-size: 8pt; color: #666; text-align: right; }
+.a4-sum { display: flex; flex-wrap: wrap; gap: 2mm 6mm; font-size: 8.5pt; margin-bottom: 3mm; }
+.a4-sum b { font-size: 11pt; }
+.a4-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; flex: 1; align-items: start; }
+.a4 table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.a4 th { background: #f3e9df; color: #5b4032; font-weight: 700; font-size: 8pt; border: .5pt solid #c9b3a2; height: 6mm; }
+.a4 td { border: .5pt solid #d8c8bb; height: 5.6mm; padding: 0 1.5mm; font-size: 8.5pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.a4 td.c { text-align: center; }
+.a4 tr.newday td { border-top: 1pt solid #9d574c; }
+.a4 .dot { display: inline-block; width: 3mm; height: 3mm; border-radius: 1mm; vertical-align: -0.4mm; margin-right: 1mm; }
+.g-table { width: 100%; border-collapse: collapse; table-layout: fixed; flex: 1; }
+.g-table col.g-date-col { width: 17mm; }
+.g-table th { background: #f3e9df; color: #5b4032; border: .3pt solid #c9b3a2; padding: 0; font-weight: 700; }
+.g-table th.g-hour { font-size: 6.5pt; height: 4mm; text-align: left; padding-left: .6mm; border-left: .9pt solid #9d574c; }
+.g-table th.g-min { font-size: 3.6pt; height: 2.6mm; font-weight: 500; color: #8a7262; }
+.g-table th.g-date { font-size: 7pt; }
+.g-table th.g-min.h { border-left: .9pt solid #9d574c; }
+.g-table td { border: .25pt solid #d8c8bb; height: 4.95mm; padding: 0 .4mm; font-size: 5.6pt; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: clip; font-weight: 700; }
+.g-table td.h { border-left: .9pt solid #9d574c; }
+.g-table td.g-date { font-size: 6.6pt; text-align: center; font-weight: 700; background: #fffaf5; color: #5b4032; }
+.g-table td.g-date.off { background: #ef5a5a; color: #fff; }
+.g-table td.g-off { background: #6f6f6f; color: #fff; text-align: center; font-size: 6pt; letter-spacing: 2mm; }
+.g-table td.g-dim { background: #eee; }
+.a4-foot { font-size: 7.5pt; color: #888; text-align: right; margin-top: 2mm; }
+.print-root { display: none; }
+
+/* メニューの各ページ */
+.pg { max-width: 760px; margin: 0 auto; display: grid; gap: 14px; }
+.pg-card { background: var(--paper); border: 1px solid #e3d3c4; border-radius: 14px; padding: 16px; min-width: 0; }
+.pg-card h3 { margin: 0 0 4px; font-size: 15px; }
+.pg-card .sub { margin: 0 0 12px; font-size: 12px; color: #80695b; }
+.pg-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.pg-row > label { display: grid; gap: 4px; font-size: 12px; font-weight: 700; color: #80695b; flex: 1 1 130px; min-width: 0; }
+.pg-row input, .pg-row select { padding: 10px; border: 1px solid #d5c1ae; border-radius: 9px; background: #fff; font-size: 15px; width: 100%; min-width: 0; }
+.checks { display: flex; flex-wrap: wrap; gap: 8px; }
+.checks label { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid #d5c1ae; border-radius: 20px; background: #fff; font-weight: 700; font-size: 14px; cursor: pointer; }
+.checks input { width: 18px; height: 18px; }
+.stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.tile { background: #fff; border: 1px solid #e3d3c4; border-radius: 12px; padding: 10px 12px; }
+.tile .k { font-size: 12px; color: #80695b; font-weight: 700; }
+.tile .v { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.tile .v small { font-size: 12px; font-weight: 700; margin-left: 2px; }
+.pg-table-wrap { overflow-x: auto; }
+.pg-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+.pg-table th, .pg-table td { border-bottom: 1px solid #eadfd5; padding: 7px 8px; text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pg-table th { font-size: 12px; color: #80695b; background: #fbf5ef; }
+.pg-table td.num { text-align: right; }
+.bar { height: 10px; border-radius: 5px; background: #eee3d8; overflow: hidden; min-width: 80px; }
+.bar i { display: block; height: 100%; background: var(--brown); }
+.rule { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eadfd5; flex-wrap: wrap; }
+.rule .sw { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+.rule .txt { flex: 1 1 200px; min-width: 0; }
+.rule .txt b { font-size: 15px; }
+.rule .txt div { font-size: 12px; color: #80695b; }
+.rule .btn { min-height: 36px; padding: 6px 10px; font-size: 13px; }
+.empty { color: #a08a7b; font-size: 13px; padding: 8px 0; }
+@media print {
+  @page { size: A4 landscape; margin: 0; }
+  html, body { height: auto !important; background: #fff !important; }
+  body > *:not(.print-root) { display: none !important; }
+  .print-root { display: block !important; }
+  .print-root .a4 { margin: 0; box-shadow: none; page-break-after: always; break-after: page; }
+  .print-root .a4:last-child { page-break-after: auto; break-after: auto; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+.result-box { font-size: 13px; background: #fff; border: 1px solid #e3d3c4; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+
+<!-- ログイン画面 -->
+<div id="loginView" class="login-wrap hidden">
+  <form id="loginForm" class="login-card" autocomplete="on">
+    <h1 class="sr-only">予約ちゃん ログイン</h1>
+    <picture><source srcset="/img/login.webp" type="image/webp"><img class="login-art" src="/img/login.jpg" alt="予約ちゃん 予約ソフト" width="640" height="807"></picture>
+    <p class="login-sub">東村山LIFE整体院 スタッフ用</p>
+    <!--LOGIN-NOTE-->
+    <label class="sr-only" for="password">パスワード</label>
+    <input id="password" class="login-input" type="password" placeholder="パスワード" autocomplete="current-password" required>
+    <button class="login-btn" type="submit" id="loginBtn">ログイン</button>
+    <div id="loginError" class="login-error hidden" role="alert"></div>
+  </form>
+</div>
+
+<!-- 予約表 -->
+<div id="appView" class="app hidden">
+  <header class="topbar">
+    <div class="topline">
+      <div class="brand"><img src="/icons/icon-192.png" alt=""><span class="brand-name">予約ちゃん</span></div>
+      <div class="ympick">
+        <button class="btn" id="ymBtn" type="button" aria-haspopup="true" aria-expanded="false"><span id="ymLabel"></span> ▾</button>
+        <div class="ym-panel hidden" id="ymPanel" role="dialog" aria-label="年と月を選ぶ">
+          <div class="ym-year"><button class="btn" type="button" id="ymPrev" aria-label="前の年">‹</button><b id="ymYear"></b><button class="btn" type="button" id="ymNext" aria-label="次の年">›</button></div>
+          <div class="ym-months" id="ymMonths"></div>
+        </div>
+      </div>
+      <button class="btn" id="todayBtn" type="button" style="min-height:38px;padding:6px 10px">今週</button>
+      <div class="menu">
+        <button class="btn" id="menuBtn" type="button" aria-label="メニュー" style="min-height:38px;padding:6px 12px">☰</button>
+        <div class="menu-list hidden" id="menuList">
+          <a href="/" target="_blank" rel="noopener" data-main-only>患者向けの表示を見る</a>
+          <button type="button" id="reloadBtn">最新の状態に更新</button>
+          <hr>
+          <button type="button" id="reportBtn">月の予約記録（PDF・会計くん用）</button>
+          <button type="button" data-page="fixed">固定予約・週のコピー</button>
+          <button type="button" data-page="stats">キャンセル統計</button>
+          <button type="button" data-page="util">稼働率</button>
+          <button type="button" data-page="settings">設定（予約の長さ）</button>
+          <hr>
+          <button type="button" id="exportBtn">バックアップを保存（JSON）</button>
+          <button type="button" id="restoreBtn">バックアップから復元</button>
+          <button type="button" data-page="import">スプレッドシートから取り込み</button>
+          <hr>
+          <button type="button" data-page="password" data-main-only>パスワード変更</button>
+          <button type="button" id="subResetBtn" data-sub-only hidden>データをすべて消す</button>
+          <hr>
+          <button type="button" id="logoutBtn" class="logout">ログアウト</button>
+        </div>
+      </div>
+    </div>
+    <div class="weeknav">
+      <button class="btn" id="prevWeek" type="button">‹ 前週</button>
+      <div class="label" id="weekLabel"></div>
+      <button class="btn" id="nextWeek" type="button">次週 ›</button>
+    </div>
+  </header>
+
+  <div id="pwWarn" class="pw-warn hidden">初期パスワード（0000）のままです。<button class="btn" type="button" id="pwWarnBtn">パスワードを変える</button></div>
+  <div class="grid-wrap" id="gridWrap">
+    <table class="grid">
+      <thead><tr id="gridHead"></tr></thead>
+      <tbody id="gridBody"></tbody>
+    </table>
+  </div>
+
+  <div class="legend" id="legend"></div>
+</div>
+
+<!-- 枠の編集 -->
+<div id="cellModal" class="overlay hidden" role="dialog" aria-modal="true">
+  <div class="sheet">
+    <h2 id="cellTitle"></h2>
+    <div class="field">
+      <span class="field-label">色</span>
+      <div class="swatches" id="swatches"></div>
+    </div>
+    <div class="field">
+      <label for="nameInput">名前</label>
+      <input id="nameInput" class="text-input" maxlength="20" placeholder="苗字 または カルテ番号" autocomplete="off">
+      <div class="hint">電話番号・症状などは書かないでください（最大20文字）</div>
+    </div>
+    <div class="field">
+      <label for="lengthSelect">長さ</label>
+      <select id="lengthSelect" class="text-input"></select>
+    </div>
+    <div id="overlapWarn" class="warn hidden"></div>
+    <div id="existingActions">
+      <div class="actions">
+        <button class="btn danger" type="button" id="cancelBtn">キャンセル処理</button>
+        <button class="btn" type="button" id="clearBtn">消す</button>
+      </div>
+      <div class="hint" style="margin:4px 0 6px">キャンセル処理は統計に残ります。消すは記録しません（入力ミスの修正用）。</div>
+    </div>
+    <div id="seriesBox" class="hidden" style="margin:6px 0 10px;padding:10px 12px;border:1px dashed #c9b3a2;border-radius:10px;background:#fff">
+      <div class="hint" id="seriesText" style="margin:0 0 8px"></div>
+      <button class="btn danger wide" type="button" id="seriesDelBtn">今日以降のこの繰り返し予約をすべて削除</button>
+    </div>
+    <div class="actions">
+      <button class="btn" type="button" data-close>閉じる</button>
+      <button class="btn primary" type="button" id="saveBtn">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 日の設定 -->
+<div id="dayModal" class="overlay hidden" role="dialog" aria-modal="true">
+  <div class="sheet">
+    <h2 id="dayTitle"></h2>
+    <label class="toggle-row"><span>この日を休診にする<br><small style="color:#a07c6a">患者向けには終日「休」と表示されます</small></span><input type="checkbox" id="closedCheck"></label>
+    <div class="actions" style="margin-top:14px">
+      <button class="btn" type="button" data-close>閉じる</button>
+      <button class="btn primary" type="button" id="daySaveBtn">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 月の予約記録 -->
+<div id="reportView" class="report-overlay hidden">
+  <div class="report-bar">
+    <span class="title">月の予約記録</span>
+    <input type="month" id="reportMonth" aria-label="対象の月">
+    <button class="btn primary" type="button" id="pdfBtn">PDFで保存</button>
+    <button class="btn" type="button" id="csvBtn">会計くん用（CSV）</button>
+    <button class="btn" type="button" id="reportClose">閉じる</button>
+  </div>
+  <div class="report-scroll">
+    <p class="report-note" id="reportNote"></p>
+    <div id="reportPages"></div>
+  </div>
+</div>
+<div class="print-root" id="printRoot"></div>
+
+<!-- メニューの各ページ -->
+<div id="pageView" class="report-overlay hidden">
+  <div class="report-bar">
+    <span class="title" id="pageTitle"></span>
+    <button class="btn" type="button" id="pageClose">閉じる</button>
+  </div>
+  <div class="report-scroll"><div class="pg" id="pageBody"></div></div>
+</div>
+
+<input type="file" id="restoreFile" accept="application/json,.json" class="hidden">
+<!-- 確認 -->
+<div id="confirmModal" class="overlay hidden" role="dialog" aria-modal="true">
+  <div class="sheet">
+    <h2>確認</h2>
+    <p id="confirmText" style="white-space:pre-wrap;margin:0 0 14px"></p>
+    <div class="actions"><button class="btn" type="button" id="confirmNo">やめる</button><button class="btn primary" type="button" id="confirmYes">OK</button></div>
+  </div>
+</div>
+<div id="saving" class="saving hidden">保存中…</div>
+
+<script src="/local-backend.js"></script>
+<script>
+'use strict';
+/* ---------- 定数 ---------- */
+const COLOR_LIST = [
+  { key: null,    label: 'なし',   sub: '空き' },
+  { key: 'pink',  label: 'ピンク', sub: '埋まり' },
+  { key: 'blue',  label: '青',     sub: '埋まり' },
+  { key: 'red',   label: '赤',     sub: '埋まり' },
+  { key: 'gray',  label: 'グレー', sub: '埋まり' },
+  { key: 'light', label: '薄水色', sub: '空き扱い' },
+];
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+const TOKEN_KEYS = { main: 'yoyaku_chan_token', sub: 'yoyaku_chan2_token' };
+// 予約ちゃん2 のパスワード（この端末の中だけのデータを開く）
+const SUB_PASSWORD = 'test';
+// mode：main＝予約ちゃん（サーバーのデータ） / sub＝予約ちゃん2（この端末のデータ）
+let mode = 'main';
+const subBackend = makeLocalBackend('yoyaku_chan2_data_v1', SUB_PASSWORD);
+// プレビュー（Claudeの画面）では本体もサーバーにつながらないので端末内で動かす
+const mainBackend = window.YOYAKU_PREVIEW ? makeLocalBackend('yoyaku_chan_preview_main_v1', '0000') : null;
+const BUSINESS_START = 10 * 60, BUSINESS_END = 21 * 60;
+
+/* ---------- 小道具 ---------- */
+const $ = id => document.getElementById(id);
+function pad(n) { return String(n).padStart(2, '0'); }
+function fmt(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function parse(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function getMonday(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); const w = x.getDay(); x.setDate(x.getDate() + (w === 0 ? -6 : 1 - w)); return x; }
+function toMin(t) { const [h, m] = t.split(':').map(Number); return h * 60 + m; }
+function toTime(m) { return pad(Math.floor(m / 60)) + ':' + pad(m % 60); }
+function label(dateStr) { const d = parse(dateStr); return (d.getMonth() + 1) + '/' + d.getDate() + '(' + WD[d.getDay()] + ')'; }
+
+const memToken = { main: '', sub: '' };
+function getToken(m = mode) { try { return localStorage.getItem(TOKEN_KEYS[m]) || memToken[m]; } catch { return memToken[m]; } }
+function setToken(t, m = mode) { memToken[m] = t || ''; try { t ? localStorage.setItem(TOKEN_KEYS[m], t) : localStorage.removeItem(TOKEN_KEYS[m]); } catch {} }
+
+// 予約ちゃん／予約ちゃん2 で表示を切り替える
+function applyMode(m) {
+  mode = m;
+  const sub = m === 'sub';
+  document.title = sub ? '予約ちゃん2' : '予約ちゃん';
+  document.querySelectorAll('.brand-name').forEach(el => { el.textContent = sub ? '予約ちゃん2' : '予約ちゃん'; });
+  document.querySelectorAll('[data-main-only]').forEach(el => { el.hidden = sub; });
+  document.querySelectorAll('[data-sub-only]').forEach(el => { el.hidden = !sub; });
+  if (sub) $('pwWarn').classList.add('hidden');
+}
+
+let toastTimer;
+function toast(msg, isError) {
+  let el = document.querySelector('.toast');
+  if (!el) { el = document.createElement('div'); el.className = 'toast'; document.body.appendChild(el); }
+  el.textContent = msg; el.classList.toggle('error', !!isError);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.remove(), isError ? 5000 : 2200);
+}
+
+async function api(path, options = {}) {
+  const backend = mode === 'sub' ? subBackend.fetch : (mainBackend ? mainBackend.fetch : fetch);
+  const res = await backend(path, {
+    method: options.method || 'GET',
+    headers: Object.assign({ 'content-type': 'application/json' }, getToken() ? { authorization: 'Bearer ' + getToken() } : {}),
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    cache: 'no-store',
+  });
+  let json = {};
+  try { json = await res.json(); } catch {}
+  if (res.status === 401 && path !== '/api/login') { setToken(''); showLogin(json.error); throw new Error(json.error || 'ログインしてください'); }
+  if (!res.ok || json.ok === false) throw new Error(json.error || ('通信エラー (' + res.status + ')'));
+  return json;
+}
+
+/* ---------- 状態 ---------- */
+let weekStart = getMonday(new Date());
+let times = [];
+let days = []; // [{date, day:{closed, cells}}]
+let current = null; // 編集中の枠 {date, time}
+let busy = false;
+
+/* ---------- ログイン ---------- */
+function showLogin(msg) {
+  $('appView').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+  $('loginError').classList.toggle('hidden', !msg);
+  $('loginError').textContent = msg || '';
+  setTimeout(() => $('password').focus(), 50);
+}
+function showApp() {
+  $('loginView').classList.add('hidden');
+  $('appView').classList.remove('hidden');
+}
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('loginBtn').disabled = true;
+  try {
+    // test なら予約ちゃん2、それ以外は予約ちゃん（サーバーで確認）
+    applyMode($('password').value === SUB_PASSWORD ? 'sub' : 'main');
+    const r = await api('/api/login', { method: 'POST', body: { password: $('password').value } });
+    setToken(r.token);
+    $('password').value = '';
+    $('pwWarn').classList.toggle('hidden', !(mode === 'main' && r.isDefault));
+    showApp();
+    await loadWeek(true);
+  } catch (err) {
+    $('loginError').textContent = err.message; $('loginError').classList.remove('hidden');
+  } finally { $('loginBtn').disabled = false; }
+});
+
+/* ---------- 表の描画 ---------- */
+function renderLegend() {
+  $('legend').innerHTML = COLOR_LIST.filter(c => c.key).map(c =>
+    '<span><i class="c-' + c.key + '"></i>' + c.label + (c.key === 'light' ? '（空き扱い）' : '') + '</span>').join('');
+}
+
+function render() {
+  const today = fmt(new Date());
+  $('weekLabel').textContent = label(days[0].date) + ' ～ ' + label(days[6].date);
+  updateYm();
+
+  const head = $('gridHead');
+  head.innerHTML = '<th>時間</th>';
+  days.forEach(({ date, day }) => {
+    const th = document.createElement('th');
+    const d = parse(date);
+    th.innerHTML = (d.getMonth() + 1) + '/' + d.getDate() + '<br>' + WD[d.getDay()] + (day.closed ? ' 休' : '');
+    if (d.getDay() === 0) th.classList.add('sun');
+    if (day.closed) th.classList.add('closed-day');
+    if (date === today) th.style.boxShadow = 'inset 0 -3px 0 #f2c14e';
+    th.addEventListener('click', () => openDay(date));
+    head.appendChild(th);
+  });
+
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const body = $('gridBody');
+  const frag = document.createDocumentFragment();
+  // 1件の予約（名前なしの同じ色の続き）を縦に1マスにまとめ、長い名前はその中で折り返す
+  const spans = days.map(({ day }) => {
+    const span = {}, covered = new Set();
+    for (let i = 0; i < times.length; i++) {
+      const c = day.cells[times[i]];
+      if (!c || !c.c) continue;
+      let n = 1;
+      while (i + n < times.length) {
+        const x = day.cells[times[i + n]];
+        if (!x || x.n || x.s || x.c !== c.c) break;
+        covered.add(times[i + n]); n++;
+      }
+      if (n > 1) span[times[i]] = n;
+      i += n - 1;
+    }
+    return { span, covered };
+  });
+  times.forEach(time => {
+    const m = toMin(time);
+    const tr = document.createElement('tr');
+    if (m % 60 === 0) tr.classList.add('hour');
+    if (m < BUSINESS_START || m >= BUSINESS_END) tr.classList.add('outside');
+    const th = document.createElement('th');
+    th.textContent = m % 30 === 0 ? time : '';
+    tr.appendChild(th);
+    days.forEach(({ date, day }, di) => {
+      if (spans[di].covered.has(time)) return;
+      const td = document.createElement('td');
+      const cell = day.cells[time];
+      if (spans[di].span[time]) { td.rowSpan = spans[di].span[time]; td.classList.add('span'); }
+      const d = parse(date);
+      if (d.getDay() === 0) td.classList.add('sun-col');
+      if (day.closed) td.classList.add('closed-col');
+      if (cell && cell.c) td.classList.add('c-' + cell.c);
+      if (cell && cell.n) td.textContent = cell.n;
+      if (cell && cell.s) td.classList.add('rep');
+      if (date === today && nowMin >= m && nowMin < m + 10) td.classList.add('now');
+      td.dataset.date = date; td.dataset.time = time;
+      tr.appendChild(td);
+    });
+    frag.appendChild(tr);
+  });
+  body.replaceChildren(frag);
+}
+
+$('gridBody').addEventListener('click', e => {
+  const td = e.target.closest('td');
+  if (td && td.dataset.date) openCell(td.dataset.date, td.dataset.time);
+});
+
+async function loadWeek(scrollToBusiness) {
+  const r = await api('/api/edit/week?start=' + fmt(weekStart));
+  times = r.times; days = r.days;
+  if (r.settings) settings = r.settings;
+  $('pwWarn').classList.toggle('hidden', !(r.auth && r.auth.isDefault));
+  render();
+  if (scrollToBusiness) {
+    const row = [...$('gridBody').rows].find(tr => tr.firstChild.textContent === '10:00');
+    if (row) $('gridWrap').scrollTop = row.offsetTop - 44;
+  }
+}
+
+/* ---------- 枠の編集 ---------- */
+let chosenColor = null;
+function renderSwatches() {
+  $('swatches').innerHTML = '';
+  COLOR_LIST.forEach(c => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch ' + (c.key ? 'c-' + c.key : 'none');
+    b.innerHTML = c.label + '<small>' + c.sub + '</small>';
+    b.setAttribute('aria-pressed', String(chosenColor === c.key));
+    b.addEventListener('click', () => { chosenColor = c.key; renderSwatches(); updateOverlapWarn(); });
+    $('swatches').appendChild(b);
+  });
+}
+
+function rangeTimes(time, minutes) {
+  const start = toMin(time), out = [];
+  for (let m = start; m < start + minutes; m += 10) { const t = toTime(m); if (times.includes(t)) out.push(t); }
+  return out;
+}
+// 重なりの対象：埋まり色の枠、または名前の入った枠（薄水色だけの枠は上書きしてよい）
+function isBlocking(cell) { return !!cell && ((cell.c && cell.c !== 'light') || !!cell.n); }
+
+// タップした枠が含まれる「1件の予約」（先頭の時刻と使っている枠）を求める
+function findBooking(day, time) {
+  const cell = day.cells[time];
+  if (!cell) return { start: time, own: [] };
+  let start = toMin(time);
+  // 名前のない続きの枠なら、同じ色の先頭までさかのぼる
+  while (!day.cells[toTime(start)].n && cell.c) {
+    const prev = day.cells[toTime(start - 10)];
+    if (!prev || prev.c !== cell.c) break;
+    start -= 10;
+    if (prev.n) break;
+  }
+  const own = [toTime(start)];
+  for (let m = start + 10; m < 22 * 60; m += 10) {
+    const c = day.cells[toTime(m)];
+    if (!c || c.c !== cell.c || c.n || !cell.c) break;
+    own.push(toTime(m));
+  }
+  return { start: toTime(start), own };
+}
+
+// この時刻から最大何分入れられるか（次のほかの予約の手前まで）
+function maxMinutes(day, start, own) {
+  const ownSet = new Set(own);
+  let m = toMin(start);
+  while (m < 22 * 60 && (ownSet.has(toTime(m)) || !isBlocking(day.cells[toTime(m)]))) m += 10;
+  return m - toMin(start);
+}
+
+let settings = { lengths: [10, 20, 30, 60, 90, 120, 'all'], defaultLength: 60 };
+
+// 選んだ長さで使う枠（「当日全て」は 9:00〜21:50 の全部）
+function selectedRange() {
+  const v = $('lengthSelect').value;
+  return v === 'all' ? times.slice() : rangeTimes(current.time, Number(v));
+}
+
+function updateOverlapWarn() {
+  if (!current) return;
+  const day = days.find(d => d.date === current.date).day;
+  const v = $('lengthSelect').value;
+  const writing = chosenColor || $('nameInput').value.trim();
+  let msg = '';
+  if (writing && v === 'all') {
+    const own = new Set(current.own);
+    const hit = times.find(t => !own.has(t) && isBlocking(day.cells[t]));
+    if (hit) msg = hit + ' に' + (day.cells[hit].n ? '「' + day.cells[hit].n + '」の' : 'ほかの') + '予約があるため、当日全ては入りません。';
+  } else if (writing && Number(v) > current.max) {
+    const t = toTime(toMin(current.time) + current.max);
+    const c = day.cells[t];
+    msg = (t >= '22:00' ? '22:00 を過ぎるため入りません。'
+      : t + ' から' + (c && c.n ? '「' + c.n + '」の' : 'ほかの') + '予約があるため、' + v + '分は入りません。') +
+      (current.max > 0 ? 'この時刻からは最大 ' + current.max + '分 までです。' : '');
+  }
+  $('overlapWarn').textContent = msg;
+  $('overlapWarn').classList.toggle('hidden', !msg);
+  $('saveBtn').disabled = !!msg;
+}
+
+function lengthLabel(v, start) {
+  if (v === 'all') return '当日全て（9:00〜21:50）' + (current.allBlocked ? ' × 入りません' : '');
+  return v + '分（' + start + '〜' + toTime(Math.min(toMin(start) + v, 22 * 60)) + '）' + (v > current.max ? ' × 入りません' : '');
+}
+
+function openCell(date, time) {
+  const day = days.find(d => d.date === date).day;
+  const bk = findBooking(day, time);
+  const cell = day.cells[bk.start];
+  const ownSet = new Set(bk.own);
+  current = { date, time: bk.start, own: bk.own, max: maxMinutes(day, bk.start, bk.own),
+    allBlocked: times.some(t => !ownSet.has(t) && isBlocking(day.cells[t])) };
+  $('cellTitle').textContent = label(date) + ' ' + bk.start + (bk.own.length === times.length ? '（当日全て）' : bk.own.length ? '（' + bk.own.length * 10 + '分の予約）' : '');
+  chosenColor = cell ? (cell.c || null) : 'pink';
+  $('nameInput').value = cell && cell.n ? cell.n : '';
+  // 選択肢は設定ページで決めたもの。既存の予約の長さが選択肢にない場合は足す
+  const opts = settings.lengths.slice();
+  const ownLen = bk.own.length * 10;
+  const isAllDay = bk.own.length === times.length;
+  if (ownLen && !isAllDay && !opts.includes(ownLen)) opts.push(ownLen);
+  opts.sort((a, b) => (a === 'all') - (b === 'all') || a - b);
+  const sel = $('lengthSelect');
+  sel.innerHTML = '';
+  opts.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = lengthLabel(v, bk.start); sel.appendChild(o); });
+  sel.value = String(isAllDay ? 'all' : ownLen || settings.defaultLength);
+  $('existingActions').classList.toggle('hidden', !cell);
+  current.series = cell && cell.s ? cell.s : '';
+  $('seriesBox').classList.toggle('hidden', !current.series);
+  if (current.series) $('seriesText').textContent = '↻ この予約は' + (current.series.startsWith('f:') ? '固定予約' : '週のコピー') + 'で入ったものです。今日（' + label(fmt(new Date())) + '）を含めて、これから先の同じ繰り返し予約をまとめて消せます。過去の分は残ります。';
+  resetArmed();
+  renderSwatches();
+  updateOverlapWarn();
+  openModal('cellModal');
+  if (!cell) setTimeout(() => $('nameInput').focus(), 80);
+}
+$('lengthSelect').addEventListener('change', updateOverlapWarn);
+$('nameInput').addEventListener('input', updateOverlapWarn);
+
+async function saveCells(color, name, rng) {
+  if (busy) return;
+  busy = true; $('saving').classList.remove('hidden');
+  try {
+    const r = await api('/api/edit/cells', { method: 'POST', body: { date: current.date, times: rng, ownTimes: current.own, color, name } });
+    const entry = days.find(d => d.date === r.date);
+    if (entry) entry.day = r.day;
+    render();
+    closeModals();
+    toast(color || name ? '保存しました' : '消しました');
+  } catch (err) {
+    toast(err.message, true);
+    loadWeek().catch(() => {}); // ほかの端末が先に入れていた場合に備えて最新を読み直す
+  } finally { busy = false; $('saving').classList.add('hidden'); }
+}
+$('saveBtn').addEventListener('click', () => {
+  if ($('saveBtn').disabled) return;
+  saveCells(chosenColor, $('nameInput').value.trim(), selectedRange());
+});
+$('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('saveBtn').click(); } });
+
+// 消す・キャンセル：1回目で確認表示、2回目で実行
+function resetArmed() {
+  $('clearBtn').dataset.armed = ''; $('clearBtn').textContent = '消す';
+  $('cancelBtn').dataset.armed = ''; $('cancelBtn').textContent = 'キャンセル処理';
+  $('seriesDelBtn').dataset.armed = ''; $('seriesDelBtn').textContent = '今日以降のこの繰り返し予約をすべて削除';
+}
+function armed(btn, text) {
+  if (btn.dataset.armed) return true;
+  resetArmed(); btn.dataset.armed = '1'; btn.textContent = text; return false;
+}
+$('clearBtn').addEventListener('click', () => {
+  if (!armed($('clearBtn'), 'もう一度押すと消えます')) return;
+  saveCells(null, '', current.own.length ? current.own : [current.time]);
+});
+$('seriesDelBtn').addEventListener('click', async () => {
+  if (!armed($('seriesDelBtn'), 'もう一度押すと今日以降をすべて削除')) return;
+  if (busy) return;
+  busy = true; $('saving').classList.remove('hidden');
+  try {
+    const r = await api('/api/edit/series/delete', { method: 'POST', body: { series: current.series } });
+    closeModals(); await loadWeek();
+    toast('今日以降の繰り返し予約を ' + r.removed + '件 削除しました');
+  } catch (err) { toast(err.message, true); }
+  finally { busy = false; $('saving').classList.add('hidden'); }
+});
+$('cancelBtn').addEventListener('click', async () => {
+  if (!armed($('cancelBtn'), 'もう一度押すと確定')) return;
+  if (busy) return;
+  busy = true; $('saving').classList.remove('hidden');
+  try {
+    const r = await api('/api/edit/cancel', { method: 'POST', body: { date: current.date, times: current.own.length ? current.own : [current.time] } });
+    days.find(d => d.date === r.date).day = r.day;
+    render(); closeModals();
+    toast('キャンセルとして記録しました' + (r.entry.name ? '（' + r.entry.name + '）' : ''));
+  } catch (err) { toast(err.message, true); loadWeek().catch(() => {}); }
+  finally { busy = false; $('saving').classList.add('hidden'); }
+});
+
+/* ---------- 日の設定 ---------- */
+let currentDay = null;
+function openDay(date) {
+  currentDay = date;
+  $('dayTitle').textContent = label(date) + ' の設定';
+  $('closedCheck').checked = !!days.find(d => d.date === date).day.closed;
+  openModal('dayModal');
+}
+$('daySaveBtn').addEventListener('click', async () => {
+  try {
+    const r = await api('/api/edit/day', { method: 'POST', body: { date: currentDay, closed: $('closedCheck').checked } });
+    days.find(d => d.date === r.date).day = r.day;
+    render(); closeModals(); toast('保存しました');
+  } catch (err) { toast(err.message, true); }
+});
+
+/* ---------- モーダル共通 ---------- */
+function openModal(id) { $(id).classList.remove('hidden'); }
+function closeModals() { document.querySelectorAll('.overlay').forEach(o => o.classList.add('hidden')); current = null; }
+document.querySelectorAll('.overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o || e.target.hasAttribute('data-close')) closeModals(); });
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModals(); });
+
+/* ---------- メニュー ---------- */
+$('menuBtn').addEventListener('click', e => { e.stopPropagation(); closeYm(); $('menuList').classList.toggle('hidden'); });
+document.addEventListener('click', () => $('menuList').classList.add('hidden'));
+$('reloadBtn').addEventListener('click', () => loadWeek().then(() => toast('更新しました')).catch(err => toast(err.message, true)));
+$('logoutBtn').addEventListener('click', () => {
+  setToken('');
+  $('menuList').classList.add('hidden');
+  applyMode('main');
+  showLogin();
+});
+
+$('exportBtn').addEventListener('click', async () => {
+  try {
+    const data = await api('/api/edit/export');
+    const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'yoyaku-chan-backup-' + fmt(new Date()).replace(/-/g, '') + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('バックアップを保存しました（' + Object.keys(data.days).length + '日分）');
+  } catch (err) { toast(err.message, true); }
+});
+
+$('restoreBtn').addEventListener('click', () => $('restoreFile').click());
+$('restoreFile').addEventListener('change', async e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const n = data && data.days ? Object.keys(data.days).length : 0;
+    if (!(await askConfirm('バックアップの ' + n + '日分で上書きします。\nバックアップに含まれない日はそのままです。', '上書きして復元'))) return;
+    const r = await restoreInChunks(data);
+    await loadWeek();
+    toast(r.restoredDays + '日分を復元しました');
+  } catch (err) { toast(err.message || 'ファイルを読めませんでした', true); }
+});
+
+
+// 画面の中で確認する（ブラウザの確認ダイアログは環境によって出ないため使わない）
+function askConfirm(text, okLabel) {
+  return new Promise(resolve => {
+    $('menuList').classList.add('hidden');
+    $('confirmText').textContent = text;
+    $('confirmYes').textContent = okLabel || 'OK';
+    $('confirmModal').classList.remove('hidden');
+    const done = v => { $('confirmModal').classList.add('hidden'); $('confirmYes').onclick = $('confirmNo').onclick = $('confirmModal').onclick = null; resolve(v); };
+    $('confirmYes').onclick = () => done(true);
+    $('confirmNo').onclick = () => done(false);
+    $('confirmModal').onclick = e => { if (e.target === $('confirmModal')) done(false); };
+  });
+}
+
+/* ---------- 月の予約記録（A4横PDF・会計くん用CSV） ---------- */
+const COLOR_HEX = { pink: '#f59bd6', blue: '#5b8fe6', red: '#ef5a5a', gray: '#7d7d7d', light: '#d3e4e8' };
+const COLOR_NAME = { pink: 'ピンク', blue: '青', red: '赤', gray: 'グレー', light: '薄水色' };
+let reportData = null; // { month, bookings, openDays }
+
+// 1日分の枠を「1件ずつの予約」にまとめる（名前のない同じ色の続きは同じ予約）
+function extractBookings(date, day) {
+  const out = [];
+  let cur = null;
+  times.forEach(t => {
+    const c = day.cells[t];
+    const cont = cur && c && c.c && c.c === cur.color && !c.n && toMin(t) === toMin(cur.end);
+    if (cont) { cur.end = toTime(toMin(t) + 10); return; }
+    if (cur) { out.push(cur); cur = null; }
+    if (c && !(c.c === 'light' && !c.n)) cur = { date, start: t, end: toTime(toMin(t) + 10), color: c.c || '', name: c.n || '' };
+  });
+  if (cur) out.push(cur);
+  out.forEach(b => { b.minutes = toMin(b.end) - toMin(b.start); });
+  return out;
+}
+
+function esc(v) { return String(v).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
+
+// 予約表と同じ並び（日付は下、時間は右）のA4横1枚
+function buildReportHtml() {
+  const { month, bookings, openDays, monthDays } = reportData;
+  const [y, m] = month.split('-').map(Number);
+  const byColor = {};
+  bookings.forEach(b => { byColor[b.color || 'none'] = (byColor[b.color || 'none'] || 0) + 1; });
+  const real = bookings.filter(b => b.color !== 'gray');
+  const totalMin = real.reduce((a, b) => a + b.minutes, 0);
+  const summary = '<div class="a4-sum">' +
+    '<span>予約 <b>' + real.length + '</b> 件</span>' +
+    '<span>予約時間 計 <b>' + Math.floor(totalMin / 60) + '</b> 時間' + (totalMin % 60 ? (totalMin % 60) + '分' : '') + '</span>' +
+    '<span>営業日 <b>' + openDays + '</b> 日</span>' +
+    Object.keys(COLOR_NAME).filter(k => byColor[k]).map(k => '<span><i class="dot" style="background:' + COLOR_HEX[k] + '"></i>' + COLOR_NAME[k] + ' ' + byColor[k] + '件</span>').join('') +
+    '</div>';
+
+  // 見出し：時刻（1時間＝6マス）
+  let head = '<tr><th class="g-date" rowspan="2">日付</th>';
+  for (let i = 0; i < times.length; i += 6) head += '<th class="g-hour" colspan="6">' + Number(times[i].slice(0, 2)) + ':00</th>';
+  head += '</tr><tr>' + times.map(t => '<th class="g-min' + (t.endsWith(':00') ? ' h' : '') + '">' + (Number(t.slice(3)) + 10) + '</th>').join('') + '</tr>';
+
+  // 本体：1日1行。同じ予約の続きはまとめて1マス（名前が読めるように）
+  let rows = '';
+  monthDays.forEach(({ date, day }) => {
+    const d = parse(date);
+    const closed = d.getDay() === 0 || day.closed;
+    rows += '<tr' + (closed ? ' class="g-closed"' : '') + '><td class="g-date' + (closed ? ' off' : '') + '">' + (d.getMonth() + 1) + '/' + d.getDate() + '(' + WD[d.getDay()] + ')</td>';
+    if (closed && !Object.keys(day.cells).length) {
+      rows += '<td class="g-off" colspan="' + times.length + '">休</td></tr>';
+      return;
+    }
+    for (let i = 0; i < times.length;) {
+      const c = day.cells[times[i]];
+      let span = 1;
+      if (c) {
+        while (i + span < times.length) {
+          const n = day.cells[times[i + span]];
+          if (!n || !c.c || n.c !== c.c || n.n) break;
+          span++;
+        }
+      }
+      const h = times[i].endsWith(':00') ? ' h' : '';
+      if (c) {
+        const bg = c.c ? 'background:' + COLOR_HEX[c.c] + ';' : '';
+        const fg = c.c === 'blue' || c.c === 'red' || c.c === 'gray' ? 'color:#fff;' : '';
+        rows += '<td class="g-cell' + h + '" colspan="' + span + '" style="' + bg + fg + '">' + esc(c.n || '') + '</td>';
+      } else {
+        rows += '<td class="g-cell' + h + (closed ? ' g-dim' : '') + '"></td>';
+      }
+      i += span;
+    }
+    rows += '</tr>';
+  });
+
+  return '<section class="a4"><div class="a4-head"><h1>予約記録　' + y + '年' + m + '月</h1>' +
+    '<div class="meta">東村山LIFE整体院　予約ちゃん<br>出力日 ' + fmt(new Date()) + '</div></div>' + summary +
+    '<table class="g-table"><colgroup><col class="g-date-col">' + times.map(() => '<col>').join('') + '</colgroup>' +
+    '<thead>' + head + '</thead><tbody>' + rows + '</tbody></table>' +
+    '<div class="a4-foot">名前は予約表に入力された内容（苗字・カルテ番号）です。取り扱いに注意してください。</div></section>';
+}
+
+async function loadReport() {
+  const month = $('reportMonth').value;
+  if (!month) return;
+  $('reportPages').innerHTML = '<p class="report-note">読み込み中…</p>';
+  try {
+    const r = await api('/api/edit/month?month=' + month);
+    if (r.times) times = r.times;
+    const bookings = [];
+    let openDays = 0;
+    r.days.forEach(({ date, day }) => {
+      if (parse(date).getDay() !== 0 && !day.closed) openDays++;
+      bookings.push(...extractBookings(date, day));
+    });
+    reportData = { month, bookings, openDays, monthDays: r.days };
+    $('reportPages').innerHTML = buildReportHtml();
+    $('reportNote').textContent = 'A4横1枚（予約表と同じ並び）。グレーの枠（休み・研修など）は表に載せ、予約件数には数えていません。';
+  } catch (err) { $('reportPages').innerHTML = ''; toast(err.message, true); }
+}
+
+$('reportBtn').addEventListener('click', () => {
+  if (!$('reportMonth').value) $('reportMonth').value = fmt(new Date()).slice(0, 7);
+  $('reportView').classList.remove('hidden');
+  loadReport();
+});
+$('reportMonth').addEventListener('change', loadReport);
+// スマホでは紙面を画面幅に縮めて表示（印刷・PDFは原寸）
+function fitA4() { const w = $('reportPages').clientWidth || window.innerWidth; const z = Math.min(1, (w - 4) / (297 * 96 / 25.4)); document.documentElement.style.setProperty('--a4zoom', z.toFixed(3)); }
+window.addEventListener('resize', fitA4);
+$('reportBtn').addEventListener('click', () => setTimeout(fitA4, 50));
+$('reportClose').addEventListener('click', () => $('reportView').classList.add('hidden'));
+
+function downloadBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+// PDF：PC版（ソフト）ならファイルとして直接保存、ブラウザ・スマホでは印刷画面から「PDFに保存」
+$('pdfBtn').addEventListener('click', async () => {
+  if (!reportData) return;
+  $('printRoot').innerHTML = buildReportHtml();
+  const filename = '予約記録_' + reportData.month + '.pdf';
+  try {
+    if (window.yoyakuDesktop && window.yoyakuDesktop.savePdf) {
+      const r = await window.yoyakuDesktop.savePdf(filename);
+      if (r && r.saved) toast('PDFを保存しました');
+    } else {
+      window.print();
+    }
+  } catch (err) { toast('PDFを作れませんでした：' + err.message, true); }
+});
+
+// 会計くん用：CSV（UTF-8・見出し付き）。会計くんはネットにつながないので、ファイルで受け渡す
+function buildCsv() {
+  const head = ['日付', '曜日', '開始', '終了', '時間(分)', '色', '名前'];
+  const q = v => { const s = String(v ?? ''); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const rows = reportData.bookings.map(b => [b.date, WD[parse(b.date).getDay()], b.start, b.end, b.minutes, COLOR_NAME[b.color] || '', b.name]);
+  return '﻿' + [head, ...rows].map(r => r.map(q).join(',')).join('\r\n') + '\r\n';
+}
+$('csvBtn').addEventListener('click', () => {
+  if (!reportData) return;
+  downloadBlob(new Blob([buildCsv()], { type: 'text/csv;charset=utf-8' }), 'yoyaku_' + reportData.month + '.csv');
+  toast('会計くん用のCSVを保存しました（' + reportData.bookings.length + '件）');
+});
+
+/* ---------- メニューの各ページ ---------- */
+const PAGE_TITLES = { password: 'パスワード変更', import: 'スプレッドシートから取り込み', settings: '設定（予約の長さ）', stats: 'キャンセル統計', util: '稼働率', fixed: '固定予約・週のコピー' };
+const LENGTH_CHOICES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 150, 180, 'all'];
+const lenText = v => v === 'all' ? '当日全て' : v + '分';
+const pageBody = () => $('pageBody');
+function openPage(name) {
+  $('menuList').classList.add('hidden');
+  $('pageTitle').textContent = PAGE_TITLES[name];
+  pageBody().innerHTML = '<p class="empty">読み込み中…</p>';
+  $('pageView').classList.remove('hidden');
+  ({ password: pagePassword, import: pageImport, settings: pageSettings, stats: pageStats, util: pageUtil, fixed: pageFixed })[name]().catch(err => { pageBody().innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; });
+}
+document.querySelectorAll('[data-page]').forEach(b => b.addEventListener('click', () => openPage(b.dataset.page)));
+$('pageClose').addEventListener('click', () => { $('pageView').classList.add('hidden'); loadWeek().catch(() => {}); });
+const thisMonth = () => fmt(new Date()).slice(0, 7);
+function monthPicker(id, onChange) {
+  setTimeout(() => $(id).addEventListener('change', onChange), 0);
+  return '<div class="pg-row"><label>対象の月<input type="month" id="' + id + '" value="' + thisMonth() + '"></label></div>';
+}
+function jstDateOf(iso) { const d = new Date(new Date(iso).getTime() + 9 * 3600 * 1000); return d.toISOString().slice(0, 10); }
+function daysBetween(a, b) { return Math.round((parse(b) - parse(a)) / 86400000); }
+
+/* パスワード変更 */
+async function pagePassword() {
+  pageBody().innerHTML = '<div class="pg-card"><h3>パスワード変更</h3>' +
+    '<p class="sub">変えると、<b>ほかの端末（スマホ・PC）はログアウト</b>されます。この端末はそのまま使えます。予約データは変わりません。</p>' +
+    '<div class="pg-row"><label>今のパスワード<input type="password" id="pwCur" autocomplete="current-password"></label></div>' +
+    '<div class="pg-row" style="margin-top:8px"><label>新しいパスワード（4文字以上。8文字以上がおすすめ）<input type="password" id="pwNew" autocomplete="new-password"></label></div>' +
+    '<div class="pg-row" style="margin-top:8px"><label>新しいパスワード（もう一度）<input type="password" id="pwNew2" autocomplete="new-password"></label></div>' +
+    '<div id="pwMsg"></div><div class="actions" style="margin-top:12px"><button class="btn primary" type="button" id="pwSave">変更する</button></div></div>';
+  $('pwSave').addEventListener('click', async () => {
+    const cur = $('pwCur').value, nx = $('pwNew').value, nx2 = $('pwNew2').value;
+    const msg = t => { $('pwMsg').innerHTML = '<div class="warn" style="margin-top:12px">' + esc(t) + '</div>'; };
+    if (!cur || !nx) return msg('今のパスワードと新しいパスワードを入れてください。');
+    if (nx !== nx2) return msg('新しいパスワードが2回で一致していません。');
+    if ([...nx].length < 4) return msg('新しいパスワードは4文字以上にしてください。');
+    if (nx === SUB_PASSWORD) return msg('「' + SUB_PASSWORD + '」は予約ちゃん2用のため使えません。');
+    $('pwSave').disabled = true;
+    try {
+      const r = await api('/api/edit/password', { method: 'POST', body: { current: cur, next: nx } });
+      setToken(r.token);
+      ['pwCur', 'pwNew', 'pwNew2'].forEach(id => { $(id).value = ''; });
+      $('pwMsg').innerHTML = '<div class="result-box" style="margin-top:12px">パスワードを変更しました。ほかの端末では、次に開いたときに新しいパスワードでログインしてください。</div>';
+      $('pwWarn').classList.add('hidden');
+      toast('パスワードを変更しました');
+    } catch (err) { msg(err.message); }
+    finally { $('pwSave').disabled = false; }
+  });
+}
+$('pwWarnBtn').addEventListener('click', () => openPage('password'));
+
+/* スプレッドシートから取り込み */
+async function pageImport() {
+  const st = await api('/api/edit/import-status');
+  const today = new Date();
+  pageBody().innerHTML =
+    '<div class="pg-card"><h3>Googleスプレッドシートの予約を取り込む</h3>' +
+    '<p class="sub">今の予約表（' + esc(st.sheetName) + '）の色と名前を、そのまま予約ちゃんに移します。移行が終わったらスプレッドシートは使わなくてOKです。</p>' +
+    (st.configured ? '' : '<div class="warn">' + (st.demo ? 'この版ではスプレッドシートに直接はつながりません。下の「ファイルから取り込む」を使ってください。'
+      : 'まだ取り込みの準備ができていません。Netlifyの環境変数に GOOGLE_SPREADSHEET_ID・GOOGLE_SHEET_NAME・GOOGLE_SERVICE_ACCOUNT_KEY（今の空き時間確認サイトと同じ値）を入れてください。') + '</div>') +
+    '<div class="pg-row"><label>開始日<input type="date" id="impFrom" value="' + fmt(addDays(today, -7)) + '"></label>' +
+    '<label>終了日<input type="date" id="impTo" value="' + fmt(addDays(today, 180)) + '"></label></div>' +
+    '<div class="actions" style="margin-top:12px"><button class="btn" type="button" id="impCheck"' + (st.configured ? '' : ' disabled') + '>1. 内容を確認</button>' +
+    '<button class="btn primary" type="button" id="impRun" disabled>2. 取り込む</button></div>' +
+    '<p class="sub" style="margin:10px 0 0">先に「内容を確認」で中身を見てから取り込みます。指定期間の日は予約ちゃんの内容が<b>上書き</b>されます。念のため、先に ☰ →「バックアップを保存」をしておくと戻せます。</p>' +
+    '<div id="impOut"></div></div>' +
+    '<div class="pg-card"><h3>ファイルから取り込む</h3>' +
+    '<p class="sub"><b>おすすめはExcel形式（.xlsx）</b>です。セルの色まで入っているので、30分・60分・120分など<b>1人ずつの長さと色を10分マス単位でそのまま</b>取り込めます。<br>スプレッドシートで「ファイル → ダウンロード → Microsoft Excel (.xlsx)」（スマホのアプリは「︙ → 共有とエクスポート → 形式を指定して保存 → .xlsx」）で保存してください。<br>CSVは色が入らないため、名前1つにつき決まった長さで入れる簡易版になります。ファイルの中身はこの端末で読み取り、予約ちゃんに保存するだけです。</p>' +
+    '<div class="pg-row"><label>ファイル（.xlsx または .csv）<input type="file" id="csvFile" accept=".xlsx,.csv,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label></div>' +
+    '<p class="sub" id="csvPicked" style="margin:6px 0 0">まだファイルが選ばれていません。</p>' +
+    '<div class="pg-row" style="margin-top:8px" id="csvOnly"><label>（CSVのときだけ）名前1つにつき塗る長さ（10分マス何個分）<select id="csvLen"><option value="10">10分（名前のマスだけ）</option><option value="30">30分（3マス）</option><option value="60" selected>60分（6マス）</option><option value="90">90分（9マス）</option></select></label>' +
+    '<label>色<select id="csvColor">' + COLOR_LIST.filter(c => c.key && c.key !== 'light').map(c => '<option value="' + c.key + '">' + c.label + '</option>').join('') + '</select></label>' +
+    '<label>開始日（空なら全部）<input type="date" id="csvFrom"></label><label>終了日（空なら全部）<input type="date" id="csvTo"></label></div>' +
+    '<div class="actions" style="margin-top:12px"><button class="btn" type="button" id="csvCheck">1. 内容を確認</button><button class="btn primary" type="button" id="csvRun" disabled>2. 上書きして取り込む</button></div>' +
+    '<div id="csvOut"></div></div>' +
+    '<div class="pg-card"><h3>色の割り当て</h3><div class="pg-table-wrap"><table class="pg-table"><tbody>' +
+    [['ピンク（マゼンタ）', 'pink'], ['赤', 'red'], ['濃いグレー', 'gray'], ['青・水色（濃いもの）', 'blue'], ['薄い水色', 'light'], ['白・色なし', null]].map(([k, c]) =>
+      '<tr><td>' + k + '</td><td>→</td><td>' + (c ? '<i class="dot" style="display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:6px;background:' + COLOR_HEX[c] + '"></i>' + COLOR_NAME[c] : 'なし（空き）') + '</td></tr>').join('') +
+    '<tr><td>それ以外の色</td><td>→</td><td>グレー（埋まり扱い）</td></tr></tbody></table></div><p class="sub" style="margin:8px 0 0">セルの文字は名前として取り込みます（20文字まで）。</p></div>';
+  let checked = null;
+  const run = async dryRun => {
+    const from = $('impFrom').value, to = $('impTo').value;
+    if (!from || !to) return toast('期間を入れてください', true);
+    $('impCheck').disabled = $('impRun').disabled = true;
+    $('impOut').innerHTML = '<p class="empty">スプレッドシートを読んでいます…</p>';
+    try {
+      const r = await api('/api/edit/import-sheet', { method: 'POST', body: { from, to, dryRun } });
+      const s = r.stats;
+      $('impOut').innerHTML = '<div class="result-box" style="margin-top:12px">' + (dryRun ? '【確認】まだ保存していません\n' : '【取り込み完了】\n') +
+        from + ' 〜 ' + to + '\nシートにあった日：' + s.days + '日 / 色・名前のある枠：' + s.cells + '\n' +
+        '予約ちゃん側で上書きされる日：' + s.overwriteDays + '日' +
+        (s.unexpectedColors ? '\n想定外の色：' + s.unexpectedColors + '枠（グレーとして取り込み）' : '') +
+        (s.truncatedNames ? '\n20文字を超えた名前：' + s.truncatedNames + '件（切り詰め）' : '') +
+        (s.missingDates.length ? '\nシートに行がない日：' + s.missingDates.length + '日' : '') + '</div>' +
+        '<div class="pg-table-wrap" style="max-height:320px;overflow:auto"><table class="pg-table"><thead><tr><th>日付</th><th>シートの枠</th><th>名前</th><th>予約ちゃん側</th></tr></thead><tbody>' +
+        s.perDay.map(x => '<tr><td>' + label(x.date) + '</td><td class="num">' + x.cells + '</td><td class="num">' + x.names + '</td><td>' + (x.existing ? '<span style="color:#a9493d">' + x.existing + '枠 → 上書き</span>' : '空') + '</td></tr>').join('') +
+        '</tbody></table></div>';
+      checked = dryRun ? from + '|' + to : null;
+      if (!dryRun) loadWeek().catch(() => {});
+    } catch (err) {
+      $('impOut').innerHTML = '<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>';
+    } finally {
+      $('impCheck').disabled = !st.configured;
+      $('impRun').disabled = checked !== $('impFrom').value + '|' + $('impTo').value;
+    }
+  };
+  $('impCheck').addEventListener('click', () => run(true));
+  $('impRun').addEventListener('click', () => {
+    const b = $('impRun');
+    if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'もう一度押すと上書きして取り込み'; return; }
+    b.dataset.armed = ''; b.textContent = '2. 取り込む'; run(false);
+  });
+  ['impFrom', 'impTo'].forEach(id => $(id).addEventListener('change', () => { $('impRun').disabled = true; }));
+
+  // CSVファイル
+  let parsed = null;
+  const invalidate = () => { parsed = null; $('csvRun').disabled = true; };
+  ['csvFile', 'csvLen', 'csvColor', 'csvFrom', 'csvTo'].forEach(id => $(id).addEventListener('change', invalidate));
+  $('csvFile').addEventListener('change', () => {
+    const f = $('csvFile').files[0];
+    $('csvPicked').textContent = f ? '選んだファイル：' + f.name + '（' + Math.round(f.size / 1024) + 'KB）' + (/\.xlsx$/i.test(f.name) ? '・Excel形式：色と長さをそのまま取り込みます' : '・CSV：下の長さ・色で取り込みます') + ' →「1. 内容を確認」を押してください' : 'まだファイルが選ばれていません。';
+    $('csvOnly').style.display = f && /\.xlsx$/i.test(f.name) ? 'none' : '';
+  });
+  const readText = f => f.text ? f.text() : new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ng(new Error('ファイルを読めませんでした')); r.readAsText(f, 'utf-8'); });
+  $('csvCheck').addEventListener('click', async () => {
+    const f = $('csvFile').files[0];
+    if (!f) { $('csvOut').innerHTML = '<div class="warn" style="margin-top:12px">先に「ファイルを選択」でCSVファイルを選んでください。スマホのアプリで選べない場合は、パソコンやスマホのブラウザで開いてお試しください。</div>'; return; }
+    $('csvOut').innerHTML = '<p class="empty">読み込み中…</p>';
+    try {
+      const opts = { minutes: Number($('csvLen').value), color: $('csvColor').value, from: $('csvFrom').value, to: $('csvTo').value };
+      const isXlsx = /\.xlsx$/i.test(f.name) || (f.type || '').includes('spreadsheetml');
+      parsed = isXlsx ? buildDaysFromGrid(await readXlsxGrid(await f.arrayBuffer()), opts) : parseSheetCsv(await readText(f), opts);
+      const ds = Object.keys(parsed.days).sort();
+      const cur = {};
+      const r = { from: ds[0], to: ds[ds.length - 1] };
+      $('csvOut').innerHTML = '<div class="result-box" style="margin-top:12px">【確認】まだ保存していません\n' +
+        (ds.length ? r.from + ' 〜 ' + r.to + '（' + ds.length + '日）' : '取り込める日がありません') +
+        '\n形式：' + (parsed.stats.xlsx ? 'Excel（色と長さをそのまま）' : 'CSV（簡易）') +
+        '\n予約：' + parsed.stats.bookings + '件' +
+        (parsed.stats.unexpected ? '\n想定外の色：' + parsed.stats.unexpected + 'マス（グレー・埋まり扱い）' : '') +
+        (parsed.stats.shortened ? '\n次の名前が近く、長さを短くした予約：' + parsed.stats.shortened + '件' : '') +
+        (parsed.stats.badDates ? '\n日付を読めなかった行：' + parsed.stats.badDates + '行' : '') +
+        (parsed.stats.truncated ? '\n20文字を超えた名前：' + parsed.stats.truncated + '件（切り詰め）' : '') +
+        '\n※ この期間の日は、予約ちゃんの内容が上書きされます。</div>' +
+        '<div class="pg-table-wrap" style="max-height:280px;overflow:auto"><table class="pg-table"><thead><tr><th>日付</th><th>予約</th></tr></thead><tbody>' +
+        ds.map(d => '<tr><td>' + label(d) + '</td><td class="num">' + parsed.perDay[d] + '件</td></tr>').join('') + '</tbody></table></div>';
+      $('csvRun').disabled = !ds.length;
+    } catch (err) { $('csvOut').innerHTML = '<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'; }
+  });
+  $('csvRun').addEventListener('click', async () => {
+    const b = $('csvRun');
+    if (!parsed) return;
+    b.disabled = true;
+    $('csvOut').innerHTML = '<p class="empty">保存しています…</p>';
+    try {
+      const r = await restoreInChunks({ app: 'yoyaku-chan', version: 1, days: parsed.days }, n => { $('csvOut').innerHTML = '<p class="empty">保存しています… ' + n + '日</p>'; });
+      parsed = null;
+      $('csvOut').innerHTML = '<div class="result-box" style="margin-top:12px">【取り込み完了】' + r.restoredDays + '日分を保存しました。\n「閉じる」で予約表に戻ると反映されています。</div>' + (r.warning ? '<div class="warn">' + esc(r.warning) + '</div>' : '');
+      toast(r.restoredDays + '日分を取り込みました');
+      loadWeek().catch(() => {});
+    } catch (err) { $('csvOut').innerHTML = '<div class="warn" style="margin-top:12px">取り込めませんでした：' + esc(err.message) + '</div>'; b.disabled = false; }
+  });
+}
+
+// 日数が多いと時間がかかるので、60日ずつに分けて送る
+async function restoreInChunks(data, onProgress) {
+  const entries = Object.entries(data.days || {});
+  let done = 0;
+  for (let i = 0; i < entries.length; i += 60) {
+    const part = { app: data.app, version: data.version, days: Object.fromEntries(entries.slice(i, i + 60)) };
+    if (i === 0 && data.extra) part.extra = data.extra;
+    const res = await api('/api/edit/restore', { method: 'POST', body: part });
+    done += res.restoredDays;
+    if (res.warning) data.__warning = res.warning;
+    if (onProgress) onProgress(done);
+  }
+  if (!entries.length && data.extra) await api('/api/edit/restore', { method: 'POST', body: { app: data.app, days: {}, extra: data.extra } });
+  return { restoredDays: done, warning: data.__warning };
+}
+
+/* ---------- Excel（.xlsx）を読む：外部の部品なしで中身（zip）を開き、文字・色・日付を取り出す ---------- */
+async function unzipEntries(buf) {
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  let eocd = -1;
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 66000); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('Excelファイルとして読めませんでした。');
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const files = {};
+  const dec = new TextDecoder();
+  for (let n = 0; n < count; n++) {
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nlen = dv.getUint16(p + 28, true), elen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+    const local = dv.getUint32(p + 42, true);
+    const name = dec.decode(u8.subarray(p + 46, p + 46 + nlen));
+    files[name] = { method, csize, local };
+    p += 46 + nlen + elen + clen;
+  }
+  return async name => {
+    const e = files[name];
+    if (!e) return null;
+    const start = e.local + 30 + dv.getUint16(e.local + 26, true) + dv.getUint16(e.local + 28, true);
+    const data = u8.subarray(start, start + e.csize);
+    if (e.method === 0) return dec.decode(data);
+    if (typeof DecompressionStream === 'undefined') throw new Error('このブラウザではExcelを開けません。Chromeの最新版でお試しください。');
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Response(stream).text();
+  };
+}
+
+async function readXlsxGrid(buf) {
+  const get = await unzipEntries(buf);
+  const xml = t => new DOMParser().parseFromString(t, 'application/xml');
+  const kids = (el, tag) => Array.from(el.getElementsByTagName(tag));
+  // 対象のシート：「CMYK臨時予約表」があればそれ、なければ1枚目
+  const wb = xml(await get('xl/workbook.xml'));
+  const rels = xml(await get('xl/_rels/workbook.xml.rels'));
+  const sheets = kids(wb, 'sheet');
+  const target = sheets.find(sh => sh.getAttribute('name') === 'CMYK臨時予約表') || sheets[0];
+  const rid = target.getAttribute('r:id') || target.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+  const rel = kids(rels, 'Relationship').find(r => r.getAttribute('Id') === rid);
+  let path = rel.getAttribute('Target').replace(/^\//, '');
+  if (!path.startsWith('xl/')) path = 'xl/' + path;
+  // 共有文字列
+  const ssText = await get('xl/sharedStrings.xml');
+  const shared = ssText ? kids(xml(ssText), 'si').map(si => kids(si, 't').map(t => t.textContent).join('')) : [];
+  // 塗りつぶしの色（セルのスタイル番号 → 色）
+  const st = xml(await get('xl/styles.xml'));
+  const fills = kids(st.getElementsByTagName('fills')[0] || st, 'fill').map(f => {
+    const pf = f.getElementsByTagName('patternFill')[0];
+    if (!pf || (pf.getAttribute('patternType') || 'none') === 'none') return null;
+    const fg = pf.getElementsByTagName('fgColor')[0];
+    if (!fg) return null;
+    const rgb = fg.getAttribute('rgb');
+    if (rgb && /^[0-9a-f]{6,8}$/i.test(rgb)) { const h = rgb.slice(-6); return { red: parseInt(h.slice(0, 2), 16) / 255, green: parseInt(h.slice(2, 4), 16) / 255, blue: parseInt(h.slice(4, 6), 16) / 255 }; }
+    return { unknown: true };
+  });
+  const xfs = kids(st.getElementsByTagName('cellXfs')[0] || st, 'xf').map(x => fills[Number(x.getAttribute('fillId') || 0)] || null);
+  // シート本体
+  const sh = xml(await get(path));
+  const grid = [];
+  const colIndex = ref => { let n = 0; for (const ch of ref.replace(/\d+/g, '')) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
+  kids(sh, 'row').forEach(row => {
+    const r = Number(row.getAttribute('r')) - 1;
+    const line = grid[r] = grid[r] || [];
+    kids(row, 'c').forEach(c => {
+      const ci = colIndex(c.getAttribute('r'));
+      const t = c.getAttribute('t');
+      const v = c.getElementsByTagName('v')[0];
+      let text = '', num = null;
+      if (t === 's') text = shared[Number(v && v.textContent)] || '';
+      else if (t === 'inlineStr') text = kids(c, 't').map(x => x.textContent).join('');
+      else if (t === 'str' || t === 'b' || t === 'e') text = v ? v.textContent : '';
+      else if (v) { num = Number(v.textContent); text = v.textContent; }
+      line[ci] = { text: text.trim(), num, color: xfs[Number(c.getAttribute('s') || 0)] || null };
+    });
+  });
+  for (let i = 0; i < grid.length; i++) grid[i] = grid[i] || [];
+  return grid;
+}
+
+// シートの色 → 予約ちゃんの色（サーバーの取り込みと同じ境界値）
+function mapCellColor(color) {
+  if (!color) return { c: null };
+  if (color.unknown) return { c: 'gray', unexpected: true };
+  const r = color.red, g = color.green, b = color.blue;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+  let h = 0, sat = 0;
+  if (max !== min) {
+    const d = max - min;
+    sat = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    h = (max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60;
+  }
+  if (l >= 0.90) return { c: null };
+  if (sat <= 0.08) return { c: l >= 0.75 ? null : 'gray' };
+  if (h <= 15 || h >= 345) return { c: 'red' };
+  if (h >= 300) return { c: 'pink' };
+  if (h >= 180 && h <= 260) return { c: l >= 0.80 ? 'light' : 'blue' };
+  return { c: 'gray', unexpected: true };
+}
+
+// Excelの表（1行目：時刻、2行目：10〜60、A列：日付）→ 予約ちゃんの日ごとのデータ。色のマスをそのまま写す
+function buildDaysFromGrid(grid, opt) {
+  if (grid.length < 3) throw new Error('行数が足りません。予約表のファイルか確認してください。');
+  const colTime = {}; let cur = null;
+  const h0 = grid[0], h1 = grid[1];
+  for (let c = 1; c < Math.max(h0.length, h1.length); c++) {
+    const hv = h0[c] ? h0[c].text : '';
+    let hm = /^(\d{1,2}):(\d{2})/.exec(hv);
+    if (!hm && h0[c] && h0[c].num !== null && h0[c].num < 1) { const mins = Math.round(h0[c].num * 1440); hm = [0, Math.floor(mins / 60), mins % 60]; }
+    if (hm) cur = Number(hm[1]) * 60 + Number(hm[2]);
+    const off = Number(h1[c] ? h1[c].text : '');
+    if (cur === null || !h1[c] || !h1[c].text || Number.isNaN(off)) continue;
+    const t = toTime(cur + off - 10);
+    if (times.includes(t)) colTime[c] = t;
+  }
+  const cols = Object.keys(colTime).map(Number).sort((a, b) => a - b);
+  if (cols.length < 10) throw new Error('1〜2行目から時刻を読み取れませんでした。予約表のファイルか確認してください。');
+  const stats = { xlsx: true, bookings: 0, shortened: 0, badDates: 0, truncated: 0, unexpected: 0 };
+  const days = {}, perDay = {};
+  let year = null, lastMonth = null;
+  for (const r of grid.slice(2)) {
+    const a = r[0];
+    if (!a || (!a.text && a.num === null)) continue;
+    let date = null;
+    if (a.num !== null && a.num > 30000 && a.num < 80000) {
+      const d = new Date(Date.UTC(1899, 11, 30) + Math.round(a.num) * 86400000);
+      date = d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+    } else {
+      const m = /^(\d{1,2})月(\d{1,2})日\((.)\)/.exec(a.text);
+      if (m) {
+        const mo = Number(m[1]), da = Number(m[2]);
+        const fits = y => { const d = new Date(y, mo - 1, da); return d.getMonth() === mo - 1 && WD[d.getDay()] === m[3]; };
+        if (year === null) { const now = new Date().getFullYear(); for (let y = now - 6; y <= now + 1; y++) if (fits(y)) year = y; }
+        else if (lastMonth !== null && mo < lastMonth && lastMonth - mo >= 6) year++;
+        if (year !== null) { let y = fits(year) ? year : fits(year + 1) ? year + 1 : fits(year - 1) ? year - 1 : null; if (y) { date = y + '-' + pad(mo) + '-' + pad(da); lastMonth = mo; } }
+      }
+    }
+    if (!date) { stats.badDates++; continue; }
+    if ((opt.from && date < opt.from) || (opt.to && date > opt.to)) continue;
+    const day = { closed: false, cells: {} };
+    cols.forEach(c => {
+      const cell = r[c];
+      if (!cell) return;
+      const { c: col, unexpected } = mapCellColor(cell.color);
+      if (unexpected) stats.unexpected++;
+      let name = (cell.text || '').replace(/[\u0000-\u001f]/g, '');
+      if ([...name].length > 20) { stats.truncated++; name = [...name].slice(0, 20).join(''); }
+      if (col || name) day.cells[colTime[c]] = Object.assign({}, col ? { c: col } : {}, name ? { n: name } : {});
+    });
+    // 件数：名前のマス＋名前なしで色が始まるマス
+    let count = 0, prev = null;
+    times.forEach(t => { const x = day.cells[t]; if (x && (x.n || (x.c && x.c !== 'light' && (!prev || prev.c !== x.c)))) count++; prev = x || null; });
+    stats.bookings += count;
+    days[date] = day; perDay[date] = count;
+  }
+  return { days, perDay, stats };
+}
+
+// スプレッドシートのCSV（1行目：時刻、2行目：10〜60、A列：「10月1日(火)」）を予約ちゃんの形に変える
+function parseCsvText(text) {
+  const rows = []; let row = [], field = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; } else field += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(field); field = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(field); rows.push(row); row = []; field = ''; }
+    else field += ch;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+function parseSheetCsv(text, opt) {
+  const rows = parseCsvText(text.replace(/^\ufeff/, ''));
+  if (rows.length < 3) throw new Error('CSVの行数が足りません。予約表のCSVか確認してください。');
+  // 見出しから列→時刻
+  const colTime = {}; let cur = null;
+  for (let c = 1; c < Math.max(rows[0].length, rows[1].length); c++) {
+    const h = /^(\d{1,2}):(\d{2})/.exec((rows[0][c] || '').trim());
+    if (h) cur = Number(h[1]) * 60 + Number(h[2]);
+    const off = Number((rows[1][c] || '').trim());
+    if (cur === null || !(rows[1][c] || '').trim() || Number.isNaN(off)) continue;
+    const t = toTime(cur + off - 10);
+    if (times.includes(t)) colTime[c] = t;
+  }
+  const cols = Object.keys(colTime).map(Number).sort((a, b) => a - b);
+  if (cols.length < 10) throw new Error('1〜2行目から時刻を読み取れませんでした。予約表のCSVか確認してください。');
+  const stats = { bookings: 0, shortened: 0, badDates: 0, truncated: 0 };
+  const days = {}, perDay = {};
+  // 年はCSVにないので、曜日が合う年を探し、12月→1月で1年進める
+  let year = null, lastMonth = null;
+  for (const r of rows.slice(2)) {
+    const m = /^(\d{1,2})月(\d{1,2})日\((.)\)/.exec((r[0] || '').trim());
+    if (!m) { if ((r[0] || '').trim()) stats.badDates++; continue; }
+    const mo = Number(m[1]), da = Number(m[2]), wdChar = m[3];
+    const fits = y => { const d = new Date(y, mo - 1, da); return d.getMonth() === mo - 1 && WD[d.getDay()] === wdChar; };
+    if (year === null) { const now = new Date().getFullYear(); for (let y = now - 6; y <= now + 1; y++) if (fits(y)) year = y; if (year === null) { stats.badDates++; continue; } }
+    else if (lastMonth !== null && mo < lastMonth && lastMonth - mo >= 6) year++;
+    let y = year;
+    if (!fits(y)) { if (fits(y + 1)) y = y + 1; else if (fits(y - 1)) y = y - 1; else { stats.badDates++; continue; } }
+    lastMonth = mo;
+    const date = y + '-' + pad(mo) + '-' + pad(da);
+    if ((opt.from && date < opt.from) || (opt.to && date > opt.to)) continue;
+    const day = { closed: false, cells: {} };
+    const named = cols.filter(c => (r[c] || '').trim());
+    named.forEach((c, k) => {
+      const start = toMin(colTime[c]);
+      const nextStart = k + 1 < named.length ? toMin(colTime[named[k + 1]]) : 22 * 60;
+      const len = Math.min(opt.minutes, nextStart - start, 22 * 60 - start);
+      if (len < opt.minutes) stats.shortened++;
+      let name = (r[c] || '').trim().replace(/[\u0000-\u001f]/g, '');
+      if ([...name].length > 20) { stats.truncated++; name = [...name].slice(0, 20).join(''); }
+      for (let x = start; x < start + len; x += 10) day.cells[toTime(x)] = Object.assign({ c: opt.color }, x === start ? { n: name } : {});
+      stats.bookings++;
+    });
+    days[date] = day; perDay[date] = named.length; // 同じ日付が複数あれば最後の行（シートと同じ）
+  }
+  return { days, perDay, stats };
+}
+
+/* 設定 */
+async function pageSettings() {
+  const r = await api('/api/edit/settings');
+  settings = r.settings;
+  pageBody().innerHTML = '<div class="pg-card"><h3>予約の長さの選択肢</h3><p class="sub">枠をタップしたときに選べる長さです。スマホ・PCで共通です。</p>' +
+    '<div class="checks" id="lenChecks">' + LENGTH_CHOICES.map(v => '<label><input type="checkbox" value="' + v + '"' + (settings.lengths.includes(v) ? ' checked' : '') + '>' + lenText(v) + '</label>').join('') + '</div>' +
+    '<div class="pg-row" style="margin-top:14px"><label>空き枠をタップしたときの初期の長さ<select id="defLen"></select></label></div>' +
+    '<div class="actions" style="margin-top:14px"><button class="btn primary" type="button" id="setSave">保存</button></div></div>';
+  const refreshDef = () => {
+    const chosen = [...document.querySelectorAll('#lenChecks input:checked')].map(i => i.value === 'all' ? 'all' : Number(i.value));
+    const cur = $('defLen').value || String(settings.defaultLength);
+    $('defLen').innerHTML = chosen.map(v => '<option value="' + v + '">' + lenText(v) + '</option>').join('');
+    if (chosen.map(String).includes(cur)) $('defLen').value = cur;
+  };
+  refreshDef();
+  $('lenChecks').addEventListener('change', refreshDef);
+  $('setSave').addEventListener('click', async () => {
+    const lengths = [...document.querySelectorAll('#lenChecks input:checked')].map(i => i.value === 'all' ? 'all' : Number(i.value));
+    if (!lengths.length) return toast('1つ以上選んでください', true);
+    const d = $('defLen').value;
+    try {
+      const r = await api('/api/edit/settings', { method: 'POST', body: { lengths, defaultLength: d === 'all' ? 'all' : Number(d) } });
+      settings = r.settings; toast('設定を保存しました');
+    } catch (err) { toast(err.message, true); }
+  });
+}
+
+/* キャンセル統計 */
+async function pageStats() {
+  pageBody().innerHTML = '<div class="pg-card">' + monthPicker('statMonth', renderStats) + '</div><div id="statOut" class="pg"></div>';
+  await renderStats();
+}
+async function renderStats() {
+  const month = $('statMonth').value; if (!month) return;
+  const [c, mres] = await Promise.all([api('/api/edit/cancels?month=' + month), api('/api/edit/month?month=' + month)]);
+  if (mres.times) times = mres.times;
+  const booked = mres.days.flatMap(({ date, day }) => extractBookings(date, day)).filter(b => b.color !== 'gray');
+  const list = c.cancels.filter(x => x.color !== 'gray').sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+  const lead = x => daysBetween(jstDateOf(x.at), x.date);
+  const groups = { '当日': 0, '前日': 0, '2〜6日前': 0, '1週間以上前': 0 };
+  list.forEach(x => { const d = lead(x); groups[d <= 0 ? '当日' : d === 1 ? '前日' : d < 7 ? '2〜6日前' : '1週間以上前']++; });
+  const total = booked.length + list.length;
+  const rate = total ? (list.length / total * 100).toFixed(1) : '0.0';
+  $('statOut').innerHTML = '<div class="pg-card"><div class="stat-tiles">' +
+    '<div class="tile"><div class="k">予約（実施分）</div><div class="v">' + booked.length + '<small>件</small></div></div>' +
+    '<div class="tile"><div class="k">キャンセル</div><div class="v">' + list.length + '<small>件</small></div></div>' +
+    '<div class="tile"><div class="k">キャンセル率</div><div class="v">' + rate + '<small>%</small></div></div>' +
+    '<div class="tile"><div class="k">当日キャンセル</div><div class="v">' + groups['当日'] + '<small>件</small></div></div>' +
+    '</div><p class="sub" style="margin:10px 0 0">キャンセル率 ＝ キャンセル ÷（予約＋キャンセル）。グレーの枠は数えていません。</p></div>' +
+    '<div class="pg-card"><h3>いつキャンセルされたか</h3><div class="pg-table-wrap"><table class="pg-table"><tbody>' +
+    Object.entries(groups).map(([k, v]) => '<tr><td>' + k + '</td><td class="num">' + v + '件</td><td style="width:50%"><div class="bar"><i style="width:' + (list.length ? v / list.length * 100 : 0) + '%"></i></div></td></tr>').join('') +
+    '</tbody></table></div></div>' +
+    '<div class="pg-card"><h3>キャンセル一覧</h3>' + (list.length ? '<p class="sub">「戻す」を押すと、その予約を予約表に戻してキャンセルの記録から外します（その時間が空いているときだけ）。</p><div class="pg-table-wrap"><table class="pg-table"><thead><tr><th></th><th>予約日</th><th>時間</th><th>名前</th><th>長さ</th><th>キャンセルした日</th><th>何日前</th></tr></thead><tbody>' +
+    list.map((x, i) => '<tr><td><button class="btn" type="button" data-restore="' + i + '" style="min-height:34px;padding:4px 12px;font-size:13px">戻す</button></td><td>' + label(x.date) + '</td><td>' + x.start + '</td><td>' + esc(x.name || '－') + '</td><td class="num">' + x.minutes + '分</td><td>' + jstDateOf(x.at).slice(5).replace('-', '/') + '</td><td class="num">' + (lead(x) <= 0 ? '当日' : lead(x) + '日前') + '</td></tr>').join('') +
+    '</tbody></table></div>' : '<p class="empty">この月のキャンセルはありません。予約をタップして「キャンセル処理」を押すとここに載ります。</p>') + '</div>';
+  $('statOut').querySelectorAll('[data-restore]').forEach(btn => btn.addEventListener('click', async () => {
+    const x = list[Number(btn.dataset.restore)];
+    btn.disabled = true;
+    try {
+      await api('/api/edit/cancel/restore', { method: 'POST', body: { date: x.date, start: x.start, at: x.at } });
+      toast(label(x.date) + ' ' + x.start + ' の予約を予約表に戻しました');
+      await renderStats();
+    } catch (err) { toast(err.message, true); btn.disabled = false; }
+  }));
+}
+
+/* 稼働率 */
+const OPEN_MIN = 10 * 60, CLOSE_MIN = 21 * 60;
+async function pageUtil() {
+  pageBody().innerHTML = '<div class="pg-card">' + monthPicker('utilMonth', renderUtil) +
+    '<p class="sub" style="margin:10px 0 0" id="utilFormula"></p></div><div id="utilOut" class="pg"></div>';
+  await renderUtil();
+}
+async function renderUtil() {
+  const month = $('utilMonth').value; if (!month) return;
+  const r = await api('/api/edit/month?month=' + month);
+  const capPerDay = CLOSE_MIN - OPEN_MIN;
+  let sumBooked = 0, sumCap = 0;
+  const rows = r.days.map(({ date, day }) => {
+    const open = parse(date).getDay() !== 0 && !day.closed;
+    let booked = 0;
+    if (open) for (let m = OPEN_MIN; m < CLOSE_MIN; m += 10) { const c = day.cells[toTime(m)]; if (c && c.c && c.c !== 'gray' && c.c !== 'light') booked += 10; }
+    if (open) { sumBooked += booked; sumCap += capPerDay; }
+    return { date, open, booked };
+  });
+  const pct = (a, b) => b ? (a / b * 100).toFixed(1) : '0.0';
+  $('utilFormula').textContent = '稼働率 ＝ 予約が入っている時間 ÷ 営業時間（10:00〜21:00 × 営業日）。グレー・薄水色の枠、日曜・休診日は除きます。';
+  $('utilOut').innerHTML = '<div class="pg-card"><div class="stat-tiles">' +
+    '<div class="tile"><div class="k">月の稼働率</div><div class="v">' + pct(sumBooked, sumCap) + '<small>%</small></div></div>' +
+    '<div class="tile"><div class="k">予約時間</div><div class="v">' + Math.floor(sumBooked / 60) + '<small>時間' + (sumBooked % 60 ? sumBooked % 60 + '分' : '') + '</small></div></div>' +
+    '<div class="tile"><div class="k">営業時間</div><div class="v">' + sumCap / 60 + '<small>時間</small></div></div>' +
+    '<div class="tile"><div class="k">営業日</div><div class="v">' + rows.filter(x => x.open).length + '<small>日</small></div></div></div></div>' +
+    '<div class="pg-card"><h3>日ごとの稼働率</h3><div class="pg-table-wrap"><table class="pg-table"><thead><tr><th>日付</th><th>予約時間</th><th>稼働率</th><th></th></tr></thead><tbody>' +
+    rows.map(x => x.open ? '<tr><td>' + label(x.date) + '</td><td class="num">' + (x.booked / 60).toFixed(1) + 'h</td><td class="num">' + pct(x.booked, capPerDay) + '%</td><td style="width:40%"><div class="bar"><i style="width:' + pct(x.booked, capPerDay) + '%"></i></div></td></tr>'
+      : '<tr><td>' + label(x.date) + '</td><td colspan="3" style="color:#a08a7b">休</td></tr>').join('') +
+    '</tbody></table></div></div>';
+}
+
+/* 固定予約・週のコピー */
+const WD_OPTS = [1, 2, 3, 4, 5, 6];
+let rules = [];
+async function pageFixed() {
+  rules = (await api('/api/edit/fixed')).rules;
+  const today = fmt(new Date());
+  const mon = fmt(getMonday(new Date()));
+  const timeOpts = times.filter(t => t >= '09:00').map(t => '<option' + (t === '10:00' ? ' selected' : '') + '>' + t + '</option>').join('');
+  const colorOpts = COLOR_LIST.filter(c => c.key).map(c => '<option value="' + c.key + '">' + c.label + '</option>').join('');
+  const lenOpts = [30, 60, 90, 120, 150, 180].map(v => '<option value="' + v + '"' + (v === 60 ? ' selected' : '') + '>' + v + '分</option>').join('');
+  const weeksOpts = [4, 8, 12, 26, 52].map(v => '<option value="' + v + '"' + (v === 8 ? ' selected' : '') + '>' + v + '週</option>').join('');
+  pageBody().innerHTML =
+    '<div class="pg-card"><h3>固定予約の患者さん</h3><p class="sub">毎週同じ曜日・時間に通う人を登録して、予約表へまとめて入れます。ほかの予約と重なる日は入れずに知らせます。</p>' +
+    '<div id="ruleList"></div>' +
+    '<h3 style="margin-top:14px">新しく登録</h3><div class="pg-row">' +
+    '<label>名前<input id="fxName" maxlength="20" placeholder="苗字 または カルテ番号"></label>' +
+    '<label>曜日<select id="fxWd">' + WD_OPTS.map(w => '<option value="' + w + '">' + WD[w] + '曜</option>').join('') + '</select></label>' +
+    '<label>時刻<select id="fxStart">' + timeOpts + '</select></label>' +
+    '<label>長さ<select id="fxLen">' + lenOpts + '</select></label>' +
+    '<label>色<select id="fxColor">' + colorOpts + '</select></label>' +
+    '<label>開始日<input type="date" id="fxFrom" value="' + today + '"></label>' +
+    '<label>終了日（任意）<input type="date" id="fxTo"></label>' +
+    '</div><div class="actions" style="margin-top:12px"><button class="btn primary" type="button" id="fxAdd">登録</button></div>' +
+    '<h3 style="margin-top:16px">予約表へ反映</h3><div class="pg-row">' +
+    '<label>反映を始める日<input type="date" id="fxApplyFrom" value="' + today + '"></label>' +
+    '<label>期間<select id="fxApplyWeeks">' + weeksOpts + '</select></label></div>' +
+    '<div class="actions" style="margin-top:12px"><button class="btn primary" type="button" id="fxApply">全員を反映</button></div><div id="fxResult"></div></div>' +
+
+    '<div class="pg-card"><h3>週のコピー（月〜土）</h3><p class="sub">ある週の予約をそのまま、ほかの週へ繰り返し入れます。重なる予約は入れずに知らせます。</p><div class="pg-row">' +
+    '<label>コピー元の週（その週のどの日でも可）<input type="date" id="cwSrc" value="' + mon + '"></label>' +
+    '<label>反映先の最初の週（来週以降）<input type="date" id="cwDst" min="' + fmt(addDays(parse(mon), 7)) + '" value="' + fmt(addDays(parse(mon), 7)) + '"></label>' +
+    '<label>繰り返す週数<select id="cwWeeks">' + [1, 2, 3, 4, 8, 12].map(v => '<option value="' + v + '">' + v + '週</option>').join('') + '<option value="unlimited">無期限</option></select></label></div>' +
+    '<div class="warn" style="margin-top:10px">⚠️ 反映先は来週以降の週です。反映先に重なる予約があると<b>コピーの内容で強制上書き</b>され、元の予約は消えます（消えた予約は結果に一覧で出ます）。重ならない予約はそのまま残ります。</div>' +
+    '<p class="sub" style="margin:8px 0 0">「無期限」は、患者向けに表示する範囲（約3か月先）まで自動で先へ延ばし続けます。自動で延ばす分は上書きせず、重なる日は入れません。止めるときは下の一覧か、予約をタップして「今日以降…削除」を押します。</p>' +
+    '<div class="actions" style="margin-top:12px"><button class="btn primary" type="button" id="cwRun">コピーする</button></div><div id="cwResult"></div>' +
+    '<h3 style="margin-top:16px">続いている無期限のコピー</h3><div id="copyList"><p class="empty">読み込み中…</p></div></div>';
+  renderRules();
+  renderCopies();
+  $('fxAdd').addEventListener('click', async () => {
+    const rule = { name: $('fxName').value.trim(), weekday: Number($('fxWd').value), start: $('fxStart').value, minutes: Number($('fxLen').value), color: $('fxColor').value, from: $('fxFrom').value, to: $('fxTo').value };
+    if (!rule.name) return toast('名前を入れてください', true);
+    try { rules = (await api('/api/edit/fixed', { method: 'POST', body: { rules: [...rules, rule] } })).rules; $('fxName').value = ''; renderRules(); toast('登録しました。「反映」で予約表に入ります'); }
+    catch (err) { toast(err.message, true); }
+  });
+  $('fxApply').addEventListener('click', () => applyFixed(null));
+  $('cwRun').addEventListener('click', async () => {
+    const src = fmt(getMonday(parse($('cwSrc').value))), dst = fmt(getMonday(parse($('cwDst').value)));
+    const btn = $('cwRun');
+    if (!btn.dataset.armed) { btn.dataset.armed = '1'; btn.textContent = '上書きしてよければ、もう一度押す'; return; }
+    btn.dataset.armed = ''; btn.textContent = 'コピーする';
+    btn.disabled = true;
+    try {
+      const wv = $('cwWeeks').value;
+      const r = await api('/api/edit/copy-week', { method: 'POST', body: { source: src, target: dst, weeks: wv === 'unlimited' ? null : Number(wv) } });
+      $('cwResult').innerHTML = resultHtml(r.result, label(src) + 'の週 → ' + label(dst) + 'から' + (wv === 'unlimited' ? '無期限' : wv + '週'));
+      renderCopies();
+    } catch (err) { $('cwResult').innerHTML = '<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'; }
+    finally { btn.disabled = false; }
+  });
+}
+async function renderCopies() {
+  try {
+    const list = (await api('/api/edit/copies')).copies.filter(c => c.weeks === null);
+    $('copyList').innerHTML = list.length ? list.map(c =>
+      '<div class="rule"><div class="txt"><b>' + label(c.source) + 'の週のコピー</b><div>' + label(c.target) + 'から無期限 ／ ' + c.count + '件の予約 ／ ' + label(c.filledUntil) + 'まで反映済み</div></div>' +
+      '<button class="btn danger" type="button" data-stop="' + c.id + '">今日以降を削除して停止</button></div>').join('')
+      : '<p class="empty">ありません。</p>';
+    $('copyList').querySelectorAll('[data-stop]').forEach(b => b.addEventListener('click', async () => {
+      if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'もう一度押すと削除して停止'; return; }
+      try { const r = await api('/api/edit/series/delete', { method: 'POST', body: { series: 'rule:' + b.dataset.stop } }); toast('停止しました（今日以降 ' + r.removed + '件を削除）'); renderCopies(); }
+      catch (err) { toast(err.message, true); }
+    }));
+  } catch (err) { $('copyList').innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; }
+}
+function renderRules() {
+  $('ruleList').innerHTML = rules.length ? rules.map(r =>
+    '<div class="rule"><i class="sw" style="background:' + COLOR_HEX[r.color] + '"></i><div class="txt"><b>' + esc(r.name) + '</b>' +
+    '<div>毎週' + WD[r.weekday] + '曜 ' + r.start + '〜 ' + r.minutes + '分 ／ ' + r.from.slice(5).replace('-', '/') + 'から' + (r.to ? ' ' + r.to.slice(5).replace('-', '/') + 'まで' : '') + '</div></div>' +
+    '<button class="btn" type="button" data-apply="' + r.id + '">この人だけ反映</button>' +
+    '<button class="btn danger" type="button" data-del="' + r.id + '">削除</button></div>').join('')
+    : '<p class="empty">まだ登録がありません。</p>';
+  $('ruleList').querySelectorAll('[data-apply]').forEach(b => b.addEventListener('click', () => applyFixed([b.dataset.apply])));
+  $('ruleList').querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'もう一度押すと削除'; return; }
+    try { rules = (await api('/api/edit/fixed', { method: 'POST', body: { rules: rules.filter(x => x.id !== b.dataset.del) } })).rules; renderRules(); toast('登録を削除しました（予約表に入れた分は残ります）'); }
+    catch (err) { toast(err.message, true); }
+  }));
+}
+async function applyFixed(ids) {
+  const from = $('fxApplyFrom').value, weeks = Number($('fxApplyWeeks').value);
+  if (!from) return toast('反映を始める日を入れてください', true);
+  const to = fmt(addDays(parse(from), weeks * 7 - 1));
+  try {
+    const r = await api('/api/edit/fixed/apply', { method: 'POST', body: { ids, from, to } });
+    $('fxResult').innerHTML = resultHtml(r.result, label(from) + '〜' + label(to));
+  } catch (err) { $('fxResult').innerHTML = '<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'; }
+}
+function resultHtml(r, period) {
+  const ow = r.overwritten || [];
+  return '<div class="result-box" style="margin-top:12px">' + period + '\n新しく入れた予約：' + r.placed + '件\nすでに入っていた予約：' + r.existing + '件\n入らなかった予約：' + r.skipped.length + '件' + (ow.length ? '\n上書きで消えた予約：' + ow.length + '件' : '') + '</div>' +
+    (ow.length ? '<div class="warn">上書きで消えた予約です。必要なら患者さんへ連絡してください。</div><div class="pg-table-wrap"><table class="pg-table"><thead><tr><th>日付</th><th>時刻</th><th>名前</th><th>長さ</th></tr></thead><tbody>' +
+      ow.map(x => '<tr><td>' + label(x.date) + '</td><td>' + x.start + '</td><td>' + esc(x.name || '－') + '</td><td class="num">' + x.minutes + '分</td></tr>').join('') + '</tbody></table></div>' : '') +
+    (r.skipped.length ? '<div class="pg-table-wrap"><table class="pg-table"><thead><tr><th>日付</th><th>時刻</th><th>名前</th><th>理由</th></tr></thead><tbody>' +
+      r.skipped.map(x => '<tr><td>' + label(x.date) + '</td><td>' + x.start + '</td><td>' + esc(x.name || '－') + '</td><td>' + esc(x.reason) + '</td></tr>').join('') + '</tbody></table></div>' : '');
+}
+
+/* ---------- 週の移動 ---------- */
+/* ---------- 年と月を選んで移動 ---------- */
+// 表示中の週の「月」は土曜日の月で数える（その月の最初の月〜土を含む週がその月）
+function shownMonth() { const sat = addDays(weekStart, 5); return { y: sat.getFullYear(), m: sat.getMonth() + 1 }; }
+let ymYear = new Date().getFullYear();
+function updateYm() { const { y, m } = shownMonth(); $('ymLabel').textContent = y + '年' + m + '月'; }
+function renderYmPanel() {
+  const { y, m } = shownMonth();
+  const now = new Date();
+  $('ymYear').textContent = ymYear + '年';
+  $('ymMonths').innerHTML = Array.from({ length: 12 }, (_, i) => '<button type="button" data-m="' + (i + 1) + '" class="' +
+    (ymYear === y && i + 1 === m ? 'on' : '') + (ymYear === now.getFullYear() && i === now.getMonth() ? ' now' : '') + '">' + (i + 1) + '月</button>').join('');
+}
+function closeYm() { $('ymPanel').classList.add('hidden'); $('ymBtn').setAttribute('aria-expanded', 'false'); }
+$('ymBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  if (!$('ymPanel').classList.contains('hidden')) return closeYm();
+  ymYear = shownMonth().y; renderYmPanel();
+  $('ymPanel').classList.remove('hidden'); $('ymBtn').setAttribute('aria-expanded', 'true');
+  $('menuList').classList.add('hidden');
+});
+$('ymPanel').addEventListener('click', e => e.stopPropagation());
+$('ymPrev').addEventListener('click', () => { ymYear--; renderYmPanel(); });
+$('ymNext').addEventListener('click', () => { ymYear++; renderYmPanel(); });
+$('ymMonths').addEventListener('click', e => {
+  const b = e.target.closest('[data-m]'); if (!b) return;
+  let first = new Date(ymYear, Number(b.dataset.m) - 1, 1);
+  if (first.getDay() === 0) first = addDays(first, 1); // 1日が日曜なら月曜から
+  weekStart = getMonday(first);
+  closeYm();
+  loadWeek(true).catch(err => toast(err.message, true));
+});
+document.addEventListener('click', closeYm);
+
+function moveWeek(n) { weekStart = n === 0 ? getMonday(new Date()) : addDays(weekStart, 7 * n); loadWeek(n === 0).catch(err => toast(err.message, true)); }
+$('prevWeek').addEventListener('click', () => moveWeek(-1));
+$('nextWeek').addEventListener('click', () => moveWeek(1));
+$('todayBtn').addEventListener('click', () => moveWeek(0));
+
+// ほかの端末の変更を拾うため、表示中は1分ごとに読み直す（編集中は読み直さない）
+setInterval(() => {
+  if (document.visibilityState === 'visible' && getToken() && !busy &&
+      [...document.querySelectorAll('.overlay')].every(o => o.classList.contains('hidden'))) {
+    loadWeek().catch(() => {});
+  }
+}, 60000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && getToken()) loadWeek().catch(() => {}); });
+
+// 予約ちゃん2のデータをすべて消す（1回目で確認表示、2回目で実行）
+$('subResetBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  const b = $('subResetBtn');
+  if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'もう一度押すと全部消えます'; return; }
+  b.dataset.armed = ''; b.textContent = 'データをすべて消す';
+  subBackend.reset(); $('menuList').classList.add('hidden');
+  loadWeek().then(() => toast('データをすべて消しました'));
+});
+
+/* ---------- 起動 ---------- */
+renderLegend();
+// 起動したら予約ちゃん（本体）から。ログアウトしていればログイン画面
+applyMode('main');
+if (getToken('main')) { showApp(); loadWeek(true).catch(err => toast(err.message, true)); }
+else showLogin();
+</script>
+</body>
+</html>

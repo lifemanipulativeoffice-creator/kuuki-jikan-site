@@ -1,0 +1,15 @@
+{
+  "name": "yoyaku-chan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "東村山LIFE整体院 予約ちゃん（予約表＋患者向け空き表示）",
+  "type": "module",
+  "scripts": {
+    "dev": "node dev/server.mjs",
+    "test": "node dev/test.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": ">=8.1.0"
+  },
+  "engines": { "node": ">=20" }
+}
