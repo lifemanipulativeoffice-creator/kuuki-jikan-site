@@ -285,4 +285,14 @@ assert.equal((await call('POST', '/api/edit/password', { current: 'newpass99', n
 for (let i = 0; i < 10; i++) await call('POST', '/api/login', { password: 'nope' + i });
 assert.equal((await call('POST', '/api/login', { password: 'newpass99' })).status, 429);
 
+// 19) 患者向け：今週より前は見せない（今日=10/9(金)、今週の月曜=10/5）
+{
+  const { publicDay } = await import('../lib/core.mjs');
+  const busy = { cells: { '10:00': { c: 'pink', n: 'x' } } };
+  assert.ok(publicDay('2026-10-02', busy, '2026-10-09').slots.every(x => x.status === 'none')); // 先週
+  assert.equal(publicDay('2026-10-05', busy, '2026-10-09').slots[0].status, 'full');             // 今週の月曜は見える
+  assert.equal(publicDay('2026-10-12', {}, '2026-10-11').slots[0].status, 'available');        // 日曜の翌週月曜
+  assert.ok(publicDay('2026-10-04', busy, '2026-10-11').slots.every(x => x.status === 'none')); // 日曜(10/11)基準の今週は10/5から
+}
+
 console.log('ALL TESTS PASSED');

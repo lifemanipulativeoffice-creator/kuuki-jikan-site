@@ -111,7 +111,14 @@ function formatDate(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + 
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function getMonday(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); const w = x.getDay(); x.setDate(x.getDate() + (w === 0 ? -6 : 1 - w)); return x; }
 
-let weekStart = getMonday(new Date());
+const thisMonday = getMonday(new Date());
+let weekStart = new Date(thisMonday);
+// 今週より前の週は見せない：今週を表示中は「前週」ボタンを隠す
+function updateNav() {
+  const atThisWeek = weekStart <= thisMonday;
+  if (atThisWeek) weekStart = new Date(thisMonday);
+  document.getElementById('prevWeek').style.visibility = atThisWeek ? 'hidden' : 'visible';
+}
 
 async function loadWeek() {
   const dates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -154,8 +161,9 @@ async function loadWeek() {
   }
 }
 
-document.getElementById('prevWeek').addEventListener('click', () => { weekStart = addDays(weekStart, -7); loadWeek(); });
-document.getElementById('nextWeek').addEventListener('click', () => { weekStart = addDays(weekStart, 7); loadWeek(); });
+document.getElementById('prevWeek').addEventListener('click', () => { if (weekStart > thisMonday) weekStart = addDays(weekStart, -7); updateNav(); loadWeek(); });
+document.getElementById('nextWeek').addEventListener('click', () => { weekStart = addDays(weekStart, 7); updateNav(); loadWeek(); });
+updateNav();
 loadWeek();
 </script>
 </body>
