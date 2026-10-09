@@ -41,7 +41,7 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
   function occupied(day, t) {
     const c = day.cells[toT(t)]; if (!c) return false;
     if (c.c && COLORS[c.c].blocks) return true;
-    return (t < 600 || t >= 1260) && !!(c.c || c.n);
+    return (t < 600 || t >= 1320) && !!(c.c || c.n);
   }
   const rangeOcc = (day, a, b) => { for (let t = a; t < b; t += 10) { if (t >= 540 && t < 1320 && occupied(day, t)) return true; } return false; };
   const publicWeek = start => Array.from({ length: 7 }, (_, i) => {

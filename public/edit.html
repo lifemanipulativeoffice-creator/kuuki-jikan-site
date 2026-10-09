@@ -417,7 +417,7 @@ let mode = 'main';
 const subBackend = makeLocalBackend('yoyaku_chan2_data_v1', SUB_PASSWORD);
 // プレビュー（Claudeの画面）では本体もサーバーにつながらないので端末内で動かす
 const mainBackend = window.YOYAKU_PREVIEW ? makeLocalBackend('yoyaku_chan_preview_main_v1', '0000') : null;
-const BUSINESS_START = 10 * 60, BUSINESS_END = 21 * 60;
+const BUSINESS_START = 10 * 60, BUSINESS_END = 22 * 60; // 21時台も正規の営業時間
 
 /* ---------- 小道具 ---------- */
 const $ = id => document.getElementById(id);
