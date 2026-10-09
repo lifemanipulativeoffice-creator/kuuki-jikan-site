@@ -406,7 +406,6 @@ const COLOR_LIST = [
   { key: 'blue',  label: '青',     sub: '埋まり' },
   { key: 'red',   label: '赤',     sub: '埋まり' },
   { key: 'gray',  label: 'グレー', sub: '埋まり' },
-  { key: 'light', label: '薄水色', sub: '区切り（空き）' },
 ];
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 const TOKEN_KEYS = { main: 'yoyaku_chan_token', sub: 'yoyaku_chan2_token' };
@@ -507,7 +506,7 @@ $('loginForm').addEventListener('submit', async e => {
 /* ---------- 表の描画 ---------- */
 function renderLegend() {
   $('legend').innerHTML = COLOR_LIST.filter(c => c.key).map(c =>
-    '<span><i class="c-' + c.key + '"></i>' + c.label + (c.key === 'light' ? '（区切り・空き）' : '') + '</span>').join('');
+    '<span><i class="c-' + c.key + '"></i>' + c.label + '</span>').join('');
 }
 
 function render() {
@@ -1186,7 +1185,7 @@ async function pageImport() {
     '<div class="actions" style="margin-top:12px"><button class="btn" type="button" id="csvCheck">1. 内容を確認</button><button class="btn primary" type="button" id="csvRun" disabled>2. 上書きして取り込む</button></div>' +
     '<div id="csvOut"></div></div>' +
     '<div class="pg-card"><h3>色の割り当て</h3><div class="pg-table-wrap"><table class="pg-table"><tbody>' +
-    [['ピンク（マゼンタ）', 'pink'], ['赤', 'red'], ['濃いグレー', 'gray'], ['青・水色（濃いもの）', 'blue'], ['薄い水色', 'light'], ['白・色なし', null]].map(([k, c]) =>
+    [['ピンク（マゼンタ）', 'pink'], ['赤', 'red'], ['濃いグレー', 'gray'], ['青・水色（濃いもの）', 'blue'], ['薄い水色・白・色なし', null]].map(([k, c]) =>
       '<tr><td>' + k + '</td><td>→</td><td>' + (c ? '<i class="dot" style="display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:6px;background:' + COLOR_HEX[c] + '"></i>' + COLOR_NAME[c] : 'なし（空き）') + '</td></tr>').join('') +
     '<tr><td>それ以外の色</td><td>→</td><td>グレー（埋まり扱い）</td></tr></tbody></table></div><p class="sub" style="margin:8px 0 0">セルの文字は名前として取り込みます（20文字まで）。</p></div>';
   let checked = null;
@@ -1387,7 +1386,7 @@ function mapCellColor(color) {
   if (sat <= 0.08) return { c: l >= 0.75 ? null : 'gray' };
   if (h <= 15 || h >= 345) return { c: 'red' };
   if (h >= 300) return { c: 'pink' };
-  if (h >= 180 && h <= 260) return { c: l >= 0.80 ? 'light' : 'blue' };
+  if (h >= 180 && h <= 260) return { c: l >= 0.80 ? null : 'blue' };
   return { c: 'gray', unexpected: true };
 }
 

@@ -86,7 +86,7 @@ assert.equal(mapSheetColor(C(0.4, 0.4, 0.4)).c, 'gray');                  // 濃
 assert.equal(mapSheetColor(C(0.2901961, 0.5254902, 0.9098039)).c, 'blue');// 青
 assert.equal(mapSheetColor({ green: 1, blue: 1 }).c, 'blue');             // シアン
 assert.equal(mapSheetColor({ blue: 1 }).c, 'blue');                       // 純青
-assert.equal(mapSheetColor(C(0.8156863, 0.8784314, 0.8901961)).c, 'light'); // 薄い水色（空き扱い）
+assert.equal(mapSheetColor(C(0.8156863, 0.8784314, 0.8901961)).c, null); // 薄い水色（区切り）は白として取り込む
 assert.equal(mapSheetColor(C(1, 0.9, 0.2)).unexpected, true);             // 想定外→グレー
 
 // 見出しの読み取り（9:00〜21:50、10分刻み）
@@ -103,9 +103,11 @@ const day = rowToDay(cells, ct, stats);
 assert.deepEqual(day.cells['10:00'], { c: 'pink', n: '田中' });
 assert.deepEqual(day.cells['10:10'], { c: 'pink' });
 
-// 薄水色は空き扱い
-const lightDay = { cells: { '10:00': { c: 'light' }, '10:10': { c: 'light' } } };
+// 保存済みの薄水色は白（空き）になる。名前つきなら名前だけ残る
+const lightDay = { cells: { '09:30': { c: 'light' }, '10:00': { c: 'light' }, '10:10': { c: 'light', n: 'メモ' } } };
 assert.equal(publicDay('2026-10-09', lightDay, '2026-10-01').slots[0].status, 'available');
+const { normalizeDay } = await import('../lib/core.mjs');
+assert.deepEqual(normalizeDay(lightDay).cells, { '10:10': { n: 'メモ' } });
 
 // 8) 重なり防止：13:00〜山田がいる日に 12:30 から120分は入らない
 const T = (start, len) => { const out = []; const [h, m] = start.split(':').map(Number); for (let x = h * 60 + m; x < h * 60 + m + len; x += 10) out.push(String(Math.floor(x / 60)).padStart(2, '0') + ':' + String(x % 60).padStart(2, '0')); return out; };
@@ -122,8 +124,8 @@ assert.equal(r.status, 200);
 assert.ok(!r.body.day.cells['13:30'] && !r.body.day.cells['13:50']);
 // 自分の予約を延ばす（後ろが空いていれば可）
 assert.equal((await call('POST', '/api/edit/cells', { date: '2026-10-09', times: T('13:00', 90), ownTimes: T('13:00', 30), color: 'pink', name: '山田' }, token)).status, 200);
-// 薄水色だけの枠は上書きできる
-await call('POST', '/api/edit/cells', { date: '2026-10-08', times: T('17:00', 30), color: 'light', name: '' }, token);
+// 薄水色は選べない（白にする）
+assert.equal((await call('POST', '/api/edit/cells', { date: '2026-10-08', times: T('17:00', 30), color: 'light', name: '' }, token)).status, 400);
 assert.equal((await call('POST', '/api/edit/cells', { date: '2026-10-08', times: T('17:00', 60), color: 'pink', name: '森' }, token)).status, 200);
 
 // 9) 1か月分

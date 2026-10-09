@@ -4,7 +4,7 @@
 // サーバーと同じ /api/... の呼び出しに、この端末のブラウザ保存領域で答える。通信はしない。
 // =========================================================
 function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
-  const COLORS = { pink: { label: 'ピンク', blocks: true }, blue: { label: '青', blocks: true }, red: { label: '赤', blocks: true }, gray: { label: 'グレー', blocks: true }, light: { label: '薄水色', blocks: false } };
+  const COLORS = { pink: { label: 'ピンク', blocks: true }, blue: { label: '青', blocks: true }, red: { label: '赤', blocks: true }, gray: { label: 'グレー', blocks: true } };
   const p2 = n => String(n).padStart(2, '0');
   const toT = m => p2(Math.floor(m / 60)) + ':' + p2(m % 60);
   const toM = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
@@ -33,6 +33,12 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
   let store;
   try { store = JSON.parse(localStorage.getItem(DATA_KEY) || 'null'); } catch { store = null; }
   if (!store) store = {};
+  // 薄水色（区切り）は使わないので白（空き）にする
+  Object.keys(store).forEach(k => {
+    const d = store[k];
+    if (k === '__meta' || !d || !d.cells) return;
+    Object.keys(d.cells).forEach(t => { const c = d.cells[t]; if (c.c === 'light') { delete c.c; if (!c.n) delete d.cells[t]; } });
+  });
   const save = () => { try { localStorage.setItem(DATA_KEY, JSON.stringify(store)); return true; } catch { return false; } };
   const reset = () => { store = {}; save(); };
   let extendCopies = null;
