@@ -103,6 +103,30 @@ table.grid { border-collapse: separate; border-spacing: 0; width: 100%; min-widt
 .c-gray  { background: var(--c-gray) !important; color: #fff; }
 .c-light { background: var(--c-light) !important; color: #3e5a60; }
 .grid td.cont { color: transparent; }
+/* PC：1か月表（日付が縦・時間が横。画面の高さに合わせて行の高さを自動で決める） */
+table.grid.month { min-width: 900px; --rowh: 22px; --fs: 11px; }
+.grid.month thead th { height: 20px; font-size: 10px; text-align: left; padding-left: 3px; cursor: default; border-left: 1px solid #c97f72; }
+.grid.month thead th.dcol { width: 84px; text-align: center; padding: 0; border-left: 0; }
+.grid.month tbody th { width: 84px; height: var(--rowh); line-height: 1; font-size: calc(var(--fs) + 1px); text-align: left; padding: 0 0 0 6px; cursor: pointer; color: #5b4032; white-space: nowrap; }
+.grid.month td { height: var(--rowh); font-size: var(--fs); padding: 0 3px; line-height: 1; border-right: 1px solid #f1e8df; border-bottom: 1px solid #e3d6ca; text-overflow: ellipsis; }
+.grid.month td.h { border-left: 1px solid #cdb6a5; }
+.grid.month td.out { background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(157,87,76,.06) 5px 7px); }
+.grid.month tr.off th { background: #9a9a9a; color: #fff; }
+.grid.month tr.off td { background-color: #ececec; }
+.grid.month tr.wk th, .grid.month tr.wk td { border-top: 2px solid #9d574c; }
+.grid.month tr.today th { box-shadow: inset 4px 0 0 #f2c14e; background: #fff3d6; }
+.grid.month td.now { box-shadow: inset 2px 0 0 #e0a100; }
+
+/* PC（幅が広いとき）：上部を1列にまとめて表を広く使う */
+@media (min-width: 1100px) {
+  .topbar { display: flex; align-items: center; gap: 10px; padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: 6px; }
+  .topline { display: contents; }
+  .brand { flex: 0 0 auto; order: 1; }
+  .weeknav { order: 2; flex: 1 1 auto; margin-top: 0; justify-content: center; }
+  .weeknav .label { flex: 0 1 auto; min-width: 230px; }
+  .ympick { order: 3; } #todayBtn { order: 4; } .menu { order: 5; }
+}
+
 /* 複数週の表示（タブレット・PC） */
 body.multi .grid thead th { font-size: 10px; height: 36px; }
 body.multi .grid thead th.sun { width: 24px; }
@@ -279,7 +303,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c;
 
   <div id="pwWarn" class="pw-warn hidden">初期パスワード（0000）のままです。<button class="btn" type="button" id="pwWarnBtn">パスワードを変える</button></div>
   <div class="grid-wrap" id="gridWrap">
-    <table class="grid">
+    <table class="grid" id="gridTable">
       <thead><tr id="gridHead"></tr></thead>
       <tbody id="gridBody"></tbody>
     </table>
@@ -487,9 +511,85 @@ function renderLegend() {
 }
 
 function render() {
-  const today = fmt(new Date());
-  $('weekLabel').textContent = label(days[0].date) + ' ～ ' + label(days[days.length - 1].date) + (days.length > 7 ? '（' + days.length / 7 + '週）' : '');
+  $('weekLabel').textContent = label(days[0].date) + ' ～ ' + label(days[days.length - 1].date) +
+    (shownWeeks === 4 ? '（' + days.length + '日）' : days.length > 7 ? '（' + days.length / 7 + '週）' : '');
   updateYm();
+  const table = $('gridTable');
+  const oldCols = table.querySelector('colgroup');
+  if (oldCols) oldCols.remove();
+  table.classList.toggle('month', shownWeeks === 4);
+  if (shownWeeks === 4) renderMonth(); else renderCols();
+}
+
+/* PC：1か月表（日付が縦・時間が横） */
+function renderMonth() {
+  const today = fmt(new Date());
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const table = $('gridTable');
+  const cg = document.createElement('colgroup');
+  cg.innerHTML = '<col style="width:84px">' + times.map(() => '<col>').join('');
+  table.prepend(cg);
+  const head = $('gridHead');
+  head.innerHTML = '<th class="dcol">日付</th>';
+  for (let i = 0; i < times.length; i += 6) {
+    const th = document.createElement('th');
+    th.colSpan = 6; th.textContent = Number(times[i].slice(0, 2)) + ':00';
+    head.appendChild(th);
+  }
+  const frag = document.createDocumentFragment();
+  days.forEach(({ date, day }) => {
+    const d = parse(date);
+    const off = d.getDay() === 0 || day.closed;
+    const tr = document.createElement('tr');
+    if (off) tr.classList.add('off');
+    if (d.getDay() === 1 && date !== days[0].date) tr.classList.add('wk');
+    if (date === today) tr.classList.add('today');
+    const th = document.createElement('th');
+    th.textContent = (d.getMonth() + 1) + '/' + d.getDate() + '(' + WD[d.getDay()] + ')' + (day.closed ? ' 休' : '');
+    th.addEventListener('click', () => openDay(date));
+    tr.appendChild(th);
+    for (let i = 0; i < times.length;) {
+      const t = times[i], c = day.cells[t];
+      let span = 1;
+      if (c && c.c) {
+        while (i + span < times.length) {
+          const x = day.cells[times[i + span]];
+          if (!x || x.n || x.s || x.c !== c.c) break;
+          span++;
+        }
+      }
+      const td = document.createElement('td');
+      const m = toMin(t);
+      if (span > 1) td.colSpan = span;
+      if (m % 60 === 0) td.classList.add('h');
+      if (m < BUSINESS_START || m >= BUSINESS_END) td.classList.add('out');
+      if (c && c.c) td.classList.add('c-' + c.c);
+      if (c && c.n) { td.textContent = c.n; td.title = c.n + '（' + t + '〜' + toTime(m + span * 10) + '）'; }
+      if (c && c.s) td.classList.add('rep');
+      if (date === today && nowMin >= m && nowMin < m + span * 10) td.classList.add('now');
+      td.dataset.date = date; td.dataset.time = t;
+      tr.appendChild(td);
+      i += span;
+    }
+    frag.appendChild(tr);
+  });
+  $('gridBody').replaceChildren(frag);
+  fitMonth();
+}
+// 画面の高さに合わせて行の高さと文字の大きさを決める（小さくなりすぎるときは縦スクロール）
+function fitMonth() {
+  const table = $('gridTable');
+  if (!table.classList.contains('month')) return;
+  const avail = $('gridWrap').clientHeight - $('gridHead').offsetHeight - 2;
+  const rowH = Math.max(12, Math.min(34, Math.floor(avail / Math.max(1, days.length))));
+  table.style.setProperty('--rowh', rowH + 'px');
+  table.style.setProperty('--fs', Math.max(9, Math.min(13, rowH - 6)) + 'px');
+}
+window.addEventListener('resize', () => fitMonth());
+
+/* スマホ・タブレット：日付が横・時間が縦 */
+function renderCols() {
+  const today = fmt(new Date());
 
   const head = $('gridHead');
   head.innerHTML = '<th>時間</th>';
@@ -585,13 +685,20 @@ window.addEventListener('resize', () => {
 
 async function loadWeek(scrollToBusiness) {
   shownWeeks = viewWeeks();
-  document.body.classList.toggle('multi', shownWeeks > 1);
-  const r = await api('/api/edit/week?start=' + fmt(weekStart) + '&days=' + shownWeeks * 7);
+  document.body.classList.toggle('multi', shownWeeks === 2);
+  let nDays = shownWeeks * 7;
+  if (shownWeeks === 4) {
+    // PC：今週の月曜から5週間。表示中の月（土曜の月）の末日までは必ず入れる
+    const sat = addDays(weekStart, 5);
+    const monthEnd = new Date(sat.getFullYear(), sat.getMonth() + 1, 0);
+    nDays = Math.min(42, Math.max(35, Math.round((monthEnd - weekStart) / 86400000) + 1));
+  }
+  const r = await api('/api/edit/week?start=' + fmt(weekStart) + '&days=' + nDays);
   times = r.times; days = r.days;
   if (r.settings) settings = r.settings;
   $('pwWarn').classList.toggle('hidden', !(r.auth && r.auth.isDefault));
   render();
-  if (scrollToBusiness) {
+  if (scrollToBusiness && shownWeeks !== 4) {
     const row = [...$('gridBody').rows].find(tr => tr.firstChild.textContent === '10:00');
     if (row) $('gridWrap').scrollTop = row.offsetTop - 44;
   }
@@ -1412,14 +1519,14 @@ async function pageSettings() {
     '<div class="checks" id="lenChecks">' + LENGTH_CHOICES.map(v => '<label><input type="checkbox" value="' + v + '"' + (settings.lengths.includes(v) ? ' checked' : '') + '>' + lenText(v) + '</label>').join('') + '</div>' +
     '<div class="pg-row" style="margin-top:14px"><label>空き枠をタップしたときの初期の長さ<select id="defLen"></select></label></div>' +
     '<div class="actions" style="margin-top:14px"><button class="btn primary" type="button" id="setSave">保存</button></div></div>' +
-    '<div class="pg-card"><h3>この端末の表示期間</h3><p class="sub">予約表に何週間分を並べるか。この端末だけの設定です（今の自動判定：' + autoWeeks() + '週）。</p>' +
+    '<div class="pg-card"><h3>この端末の表示期間</h3><p class="sub">予約表に何週間分を並べるか。この端末だけの設定です（今の自動判定：' + (autoWeeks() === 4 ? '1か月表' : autoWeeks() + '週') + '）。</p>' +
     '<div class="pg-row"><label>表示期間<select id="viewWeeks">' +
-    [['', '自動（スマホ1週・タブレット2週・PC4週）'], ['1', '1週間'], ['2', '2週間'], ['4', '4週間']].map(([v, t]) => '<option value="' + v + '">' + t + '</option>').join('') +
+    [['', '自動（スマホ1週・タブレット2週・PC1か月表）'], ['1', '1週間'], ['2', '2週間'], ['4', '1か月表（日付が縦・時間が横）']].map(([v, t]) => '<option value="' + v + '">' + t + '</option>').join('') +
     '</select></label></div></div>';
   try { $('viewWeeks').value = localStorage.getItem(VIEW_KEY) || ''; } catch {}
   $('viewWeeks').addEventListener('change', () => {
     try { $('viewWeeks').value ? localStorage.setItem(VIEW_KEY, $('viewWeeks').value) : localStorage.removeItem(VIEW_KEY); } catch {}
-    toast('この端末の表示を' + viewWeeks() + '週間にしました');
+    toast('この端末の表示を' + (viewWeeks() === 4 ? '1か月表' : viewWeeks() + '週間') + 'にしました');
   });
   const refreshDef = () => {
     const chosen = [...document.querySelectorAll('#lenChecks input:checked')].map(i => i.value === 'all' ? 'all' : Number(i.value));
