@@ -258,7 +258,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c;
     <!--LOGIN-NOTE-->
     <label class="sr-only" for="password">パスワード</label>
     <input id="password" class="login-input" type="password" placeholder="パスワード" autocomplete="current-password" required>
-    <button class="login-btn" type="submit" id="loginBtn">ログイン</button>
+    <button class="login-btn" type="button" id="loginBtn">ログイン</button>
     <div id="loginError" class="login-error hidden" role="alert"></div>
   </form>
 </div>
@@ -492,8 +492,12 @@ function showApp() {
   $('loginView').classList.add('hidden');
   $('appView').classList.remove('hidden');
 }
-$('loginForm').addEventListener('submit', async e => {
-  e.preventDefault();
+// フォーム送信は使わない（埋め込み表示などで送信が止められても動くように、ボタンとEnterで直接ログインする）
+$('loginForm').addEventListener('submit', e => { e.preventDefault(); doLogin(); });
+$('loginBtn').addEventListener('click', () => doLogin());
+$('password').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doLogin(); } });
+async function doLogin() {
+  if ($('loginBtn').disabled) return;
   $('loginBtn').disabled = true;
   try {
     // test なら予約ちゃん2、それ以外は予約ちゃん（サーバーで確認）
@@ -507,7 +511,7 @@ $('loginForm').addEventListener('submit', async e => {
   } catch (err) {
     $('loginError').textContent = err.message; $('loginError').classList.remove('hidden');
   } finally { $('loginBtn').disabled = false; }
-});
+}
 
 /* ---------- 表の描画 ---------- */
 function renderLegend() {
