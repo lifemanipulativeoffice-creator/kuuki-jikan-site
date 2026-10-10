@@ -1799,28 +1799,35 @@ async function renderStats() {
 // ・予約1件の長さは30分単位に切り上げ、開始時刻から10分マスを埋める
 // ・人が重なった時間は1回だけ数える
 // ・10:00より前・22:00より後の分も足す（ただし上限は11時間）
-// ・1日の稼働率 ＝ 埋まった時間 ÷ 11時間（12時間 − 休憩1時間）
+// ・1日の稼働率 ＝ 埋まった時間 ÷ 稼働できる時間（12時間 − 休憩1時間 − グレー・統計除外の時間）
 // ・月の稼働率 ＝ 各日の稼働率の平均（定休日・休診日は除く。「0%の日を除く」なら0%の日も除く）
 // ・グレー（休み・研修など）と「統計から除外」にした予約は数えない
 const UTIL_OPEN = 12 * 60;   // 営業 10:00〜22:00
 const UTIL_BREAK = 60;       // 毎日の休憩（稼働できる時間から引く）
 const UTIL_CAP = UTIL_OPEN - UTIL_BREAK;
+// グレー（休み・研修など）と「統計から除外」（打ち合わせなど）の時間は、稼働できる時間（分母）から引く
+// 例：打ち合わせ1時間の日は 12時間 − 休憩1時間 − 1時間 ＝ 10時間で割る
 function dayUtilization(date, day) {
-  const filled = new Set();
-  extractBookings(date, day)
-    .filter(b => b.color !== 'gray' && !b.excluded)
-    .forEach(b => {
-      const len = Math.ceil(b.minutes / 30) * 30;
-      for (let m = toMin(b.start); m < toMin(b.start) + len; m += 10) filled.add(m);
-    });
-  const minutes = Math.min(filled.size * 10, UTIL_CAP);
-  return { minutes, rate: minutes / UTIL_CAP };
+  const filled = new Set(), removed = new Set();
+  const list = extractBookings(date, day);
+  list.filter(b => b.color !== 'gray' && !b.excluded).forEach(b => {
+    const len = Math.ceil(b.minutes / 30) * 30;
+    for (let m = toMin(b.start); m < toMin(b.start) + len; m += 10) filled.add(m);
+  });
+  list.filter(b => b.color === 'gray' || b.excluded).forEach(b => {
+    for (let m = toMin(b.start); m < toMin(b.end); m += 10) {
+      if (m >= 10 * 60 && m < 10 * 60 + UTIL_OPEN && !filled.has(m)) removed.add(m); // 営業時間内で、施術と重ならない分だけ
+    }
+  });
+  const cap = Math.max(0, UTIL_CAP - removed.size * 10);
+  const minutes = Math.min(filled.size * 10, cap);
+  return { minutes, cap, removedMin: removed.size * 10, rate: cap ? minutes / cap : 0 };
 }
 let utilExcludeZero = false;
 async function pageUtil() {
   pageBody().innerHTML = '<div class="pg-card">' + monthPicker('utilMonth', renderUtil) +
     '<label class="toggle-row" style="margin-top:10px"><span>0%の日を除いて平均する</span><input type="checkbox" id="utilZero"' + (utilExcludeZero ? ' checked' : '') + '></label>' +
-    '<p class="sub" style="margin:10px 0 0">会計くんと同じ計算です。予約1件は30分単位に切り上げ、人が重なった時間は1回だけ数えます。1日の稼働率＝埋まった時間÷11時間（営業10:00〜22:00の12時間から毎日の休憩1時間を引いた時間。時間外の分も足し、上限11時間）。月の稼働率＝各日の稼働率の平均（日曜・休診日は除く）。グレーの枠と「統計から除外」にした予約は数えません。</p></div>' +
+    '<p class="sub" style="margin:10px 0 0">会計くんと同じ計算です。予約1件は30分単位に切り上げ、人が重なった時間は1回だけ数えます。1日の稼働率＝埋まった時間÷稼働できる時間。稼働できる時間＝営業10:00〜22:00の12時間 − 毎日の休憩1時間 − その日のグレー・「統計から除外」の時間（例：打ち合わせ1時間なら10時間）。時間外の施術も足し、上限は稼働できる時間まで。月の稼働率＝各日の稼働率の平均（日曜・休診日・1日まるごとグレーの日は除く）。※毎日の休憩1時間は自動で引くので、予約表に入れると二重に引かれます。</p></div>' +
     '<div id="utilOut" class="pg"></div>';
   $('utilZero').addEventListener('change', () => { utilExcludeZero = $('utilZero').checked; renderUtil(); });
   await renderUtil();
@@ -1830,8 +1837,9 @@ async function renderUtil() {
   const r = await api('/api/edit/month?month=' + month);
   if (r.times) times = r.times;
   const rows = r.days.map(({ date, day }) => {
-    const open = parse(date).getDay() !== 0 && !day.closed;
-    return Object.assign({ date, open }, open ? dayUtilization(date, day) : { minutes: 0, rate: 0 });
+    const u = dayUtilization(date, day);
+    const open = parse(date).getDay() !== 0 && !day.closed && u.cap > 0; // 1日まるごとグレー・除外の日は休みと同じ扱い
+    return Object.assign({ date, open }, open ? u : { minutes: 0, rate: 0, cap: 0 });
   });
   const counted = rows.filter(x => x.open && !(utilExcludeZero && x.minutes === 0));
   const avg = counted.length ? counted.reduce((a, x) => a + x.rate, 0) / counted.length : 0;
@@ -1842,9 +1850,9 @@ async function renderUtil() {
     '<div class="tile"><div class="k">稼働した時間</div><div class="v">' + Math.floor(total / 60) + '<small>時間' + (total % 60 ? total % 60 + '分' : '') + '</small></div></div>' +
     '<div class="tile"><div class="k">平均に入れた日</div><div class="v">' + counted.length + '<small>日</small></div></div>' +
     '<div class="tile"><div class="k">営業日</div><div class="v">' + rows.filter(x => x.open).length + '<small>日</small></div></div></div></div>' +
-    '<div class="pg-card"><h3>日ごとの稼働率</h3><div class="pg-table-wrap"><table class="pg-table"><thead><tr><th>日付</th><th>稼働した時間</th><th>稼働率</th><th></th></tr></thead><tbody>' +
-    rows.map(x => !x.open ? '<tr><td>' + label(x.date) + '</td><td colspan="3" style="color:#a08a7b">休</td></tr>'
-      : '<tr' + (utilExcludeZero && x.minutes === 0 ? ' style="color:#b9a89a"' : '') + '><td>' + label(x.date) + '</td><td class="num">' + (x.minutes / 60).toFixed(1) + 'h</td><td class="num">' + pct(x.rate) + '%</td><td style="width:40%"><div class="bar"><i style="width:' + pct(x.rate) + '%"></i></div></td></tr>').join('') +
+    '<div class="pg-card"><h3>日ごとの稼働率</h3><div class="pg-table-wrap"><table class="pg-table"><thead><tr><th>日付</th><th>稼働した時間</th><th>稼働できる時間</th><th>稼働率</th><th></th></tr></thead><tbody>' +
+    rows.map(x => !x.open ? '<tr><td>' + label(x.date) + '</td><td colspan="4" style="color:#a08a7b">休</td></tr>'
+      : '<tr' + (utilExcludeZero && x.minutes === 0 ? ' style="color:#b9a89a"' : '') + '><td>' + label(x.date) + '</td><td class="num">' + (x.minutes / 60).toFixed(1) + 'h</td><td class="num">' + (x.cap / 60).toFixed(1) + 'h</td><td class="num">' + pct(x.rate) + '%</td><td style="width:40%"><div class="bar"><i style="width:' + pct(x.rate) + '%"></i></div></td></tr>').join('') +
     '</tbody></table></div></div>';
 }
 
