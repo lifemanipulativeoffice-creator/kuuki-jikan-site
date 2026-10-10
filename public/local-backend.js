@@ -92,7 +92,7 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
       body.times.forEach((t, i) => {
         const n = i === 0 ? name : '';
         if (!body.color && !n) delete day.cells[t];
-        else day.cells[t] = Object.assign({}, body.color ? { c: body.color } : {}, n ? { n } : {});
+        else day.cells[t] = Object.assign({}, body.color ? { c: body.color } : {}, n ? { n } : {}, i === 0 && body.exclude === true ? { x: 1 } : {});
       });
       store[body.date] = day; save();
       return reply({ ok: true, date: body.date, day });
@@ -185,7 +185,7 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
           if ((c0.c && COLORS[c0.c].blocks) || c0.n) (res.overwritten = res.overwritten || []).push({ date, start: TIMES[a], minutes: (z - a + 1) * 10, name: head.n || '', color: head.c || '' });
           for (let k = a; k <= z; k++) delete day.cells[TIMES[k]];
         });
-        ts.forEach((t, i) => { day.cells[t] = Object.assign({}, b.color ? { c: b.color } : {}, i === 0 && b.name ? { n: b.name } : {}, i === 0 && b.s ? { s: b.s } : {}); });
+        ts.forEach((t, i) => { day.cells[t] = Object.assign({}, b.color ? { c: b.color } : {}, i === 0 && b.name ? { n: b.name } : {}, i === 0 && b.s ? { s: b.s } : {}, i === 0 && b.x ? { x: 1 } : {}); });
         res.placed++;
       });
       store[date] = day;
@@ -232,9 +232,9 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
         const day = getDay(addD(body.source, i)); const out = []; let cur = null;
         TIMES.forEach(t => {
           const c = day.cells[t];
-          if (cur && c && c.c && c.c === cur.color && !c.n && toM(t) === toM(cur.start) + cur.minutes) { cur.minutes += 10; return; }
+          if (cur && c && c.c && c.c === cur.color && !c.n && !c.x && toM(t) === toM(cur.start) + cur.minutes) { cur.minutes += 10; return; }
           if (cur) out.push(cur);
-          cur = c ? { start: t, minutes: 10, color: c.c || '', name: c.n || '' } : null;
+          cur = c ? Object.assign({ start: t, minutes: 10, color: c.c || '', name: c.n || '' }, c.x ? { x: 1 } : {}) : null;
         });
         if (cur) out.push(cur);
         template.push(out.filter(b => b.color !== 'light' || b.name).map(b => Object.assign(b, { s: 'w:' + id + ':' + (i + 1) + '-' + b.start })));

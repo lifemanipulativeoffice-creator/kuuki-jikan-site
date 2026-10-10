@@ -295,4 +295,17 @@ assert.equal((await call('POST', '/api/login', { password: 'newpass99' })).statu
   assert.ok(publicDay('2026-10-04', busy, '2026-10-11').slots.every(x => x.status === 'none')); // 日曜(10/11)基準の今週は10/5から
 }
 
+// 20) 統計から除外（休憩・打ち合わせ）：x が先頭の枠に保存され、空き判定では埋まり扱い
+r = await call('POST', '/api/edit/cells', { date: '2026-12-15', times: T('13:00', 60), color: 'gray', name: '休憩', exclude: true }, token2);
+assert.equal(r.status, 200);
+assert.equal(r.body.day.cells['13:00'].x, 1);
+assert.ok(!r.body.day.cells['13:10'].x);
+r = await call('POST', '/api/edit/cells', { date: '2026-12-15', times: T('13:00', 60), ownTimes: T('13:00', 60), color: 'gray', name: '休憩' }, token2);
+assert.ok(!r.body.day.cells['13:00'].x); // チェックを外すと解除
+{
+  const { normalizeDay } = await import('../lib/core.mjs');
+  assert.equal(normalizeDay({ cells: { '10:00': { c: 'pink', n: 'a', x: 1 } } }).cells['10:00'].x, 1);
+  assert.ok(!('x' in normalizeDay({ cells: { '10:00': { c: 'pink', n: 'a', x: 'yes' } } }).cells['10:00']));
+}
+
 console.log('ALL TESTS PASSED');

@@ -102,6 +102,11 @@ table.grid { border-collapse: separate; border-spacing: 0; width: 100%; min-widt
 .c-red   { background: var(--c-red) !important; color: #fff; }
 .c-gray  { background: var(--c-gray) !important; color: #fff; }
 .c-light { background: var(--c-light) !important; color: #3e5a60; }
+/* 統計から除外した予約（休憩・打ち合わせなど）は斜線 */
+.grid td.ex::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 3px, transparent 3px 8px); }
+.legend .ex-i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; background: #9d574c repeating-linear-gradient(135deg, rgba(255,255,255,.6) 0 2px, transparent 2px 5px); }
+.ex-check { display: flex; align-items: center; gap: 8px; margin: 2px 0 12px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.ex-check input { width: 20px; height: 20px; }
 /* なぞって選ぶ（ドラッグ・長押しスライド） */
 .grid td.drag-sel { background: rgba(157,87,76,.38) !important; }
 .grid.dragging, .grid.dragging td { cursor: crosshair; }
@@ -335,6 +340,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c;
       <label for="lengthSelect">長さ</label>
       <select id="lengthSelect" class="text-input"></select>
     </div>
+    <label class="ex-check"><input type="checkbox" id="excludeCheck"> 統計から除外（休憩・打ち合わせなど）</label>
     <div id="overlapWarn" class="warn hidden"></div>
     <div id="existingActions">
       <div class="actions">
@@ -516,7 +522,7 @@ async function doLogin() {
 /* ---------- 表の描画 ---------- */
 function renderLegend() {
   $('legend').innerHTML = COLOR_LIST.filter(c => c.key).map(c =>
-    '<span><i class="c-' + c.key + '"></i>' + c.label + '</span>').join('');
+    '<span><i class="c-' + c.key + '"></i>' + c.label + '</span>').join('') + '<span><i class="ex-i"></i>斜線＝統計から除外</span>';
 }
 
 function render() {
@@ -563,7 +569,7 @@ function renderMonth() {
       if (c && c.c) {
         while (i + span < times.length) {
           const x = day.cells[times[i + span]];
-          if (!x || x.n || x.s || x.c !== c.c) break;
+          if (!x || x.n || x.s || x.x || x.c !== c.c) break;
           span++;
         }
       }
@@ -575,6 +581,7 @@ function renderMonth() {
       if (c && c.c) td.classList.add('c-' + c.c);
       if (c && c.n) { td.textContent = c.n; td.title = c.n + '（' + t + '〜' + toTime(m + span * 10) + '）'; }
       if (c && c.s) td.classList.add('rep');
+      if (c && c.x) td.classList.add('ex');
       if (date === today && nowMin >= m && nowMin < m + span * 10) td.classList.add('now');
       td.dataset.date = date; td.dataset.time = t;
       tr.appendChild(td);
@@ -627,7 +634,7 @@ function renderCols() {
       let n = 1;
       while (i + n < times.length) {
         const x = day.cells[times[i + n]];
-        if (!x || x.n || x.s || x.c !== c.c) break;
+        if (!x || x.n || x.s || x.x || x.c !== c.c) break;
         covered.add(times[i + n]); n++;
       }
       if (n > 1) span[times[i]] = n;
@@ -655,6 +662,7 @@ function renderCols() {
       if (cell && cell.c) td.classList.add('c-' + cell.c);
       if (cell && cell.n) td.textContent = cell.n;
       if (cell && cell.s) td.classList.add('rep');
+      if (cell && cell.x) td.classList.add('ex');
       if (date === today && nowMin >= m && nowMin < m + 10) td.classList.add('now');
       td.dataset.date = date; td.dataset.time = time;
       tr.appendChild(td);
@@ -827,7 +835,7 @@ function findBooking(day, time) {
   if (!cell) return { start: time, own: [] };
   let start = toMin(time);
   // 名前のない続きの枠なら、同じ色の先頭までさかのぼる
-  while (!day.cells[toTime(start)].n && cell.c) {
+  while (!day.cells[toTime(start)].n && !day.cells[toTime(start)].x && cell.c) {
     const prev = day.cells[toTime(start - 10)];
     if (!prev || prev.c !== cell.c) break;
     start -= 10;
@@ -908,6 +916,8 @@ function openCell(date, time, presetLen) {
   opts.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = lengthLabel(v, bk.start); sel.appendChild(o); });
   sel.value = String(isAllDay ? 'all' : ownLen || dragLen || settings.defaultLength);
   $('existingActions').classList.toggle('hidden', !cell);
+  $('excludeCheck').checked = !!(cell && cell.x);
+  $('cancelBtn').classList.toggle('hidden', !!(cell && cell.x)); // 休憩などはキャンセル統計に入れない
   current.series = cell && cell.s ? cell.s : '';
   $('seriesBox').classList.toggle('hidden', !current.series);
   if (current.series) $('seriesText').textContent = '↻ この予約は' + (current.series.startsWith('f:') ? '固定予約' : '週のコピー') + 'で入ったものです。今日（' + label(fmt(new Date())) + '）を含めて、これから先の同じ繰り返し予約をまとめて消せます。過去の分は残ります。';
@@ -924,7 +934,7 @@ async function saveCells(color, name, rng) {
   if (busy) return;
   busy = true; $('saving').classList.remove('hidden');
   try {
-    const r = await api('/api/edit/cells', { method: 'POST', body: { date: current.date, times: rng, ownTimes: current.own, color, name } });
+    const r = await api('/api/edit/cells', { method: 'POST', body: { date: current.date, times: rng, ownTimes: current.own, color, name, exclude: !!(color || name) && $('excludeCheck').checked } });
     const entry = days.find(d => d.date === r.date);
     if (entry) entry.day = r.day;
     render();
@@ -1067,10 +1077,10 @@ function extractBookings(date, day) {
   let cur = null;
   times.forEach(t => {
     const c = day.cells[t];
-    const cont = cur && c && c.c && c.c === cur.color && !c.n && toMin(t) === toMin(cur.end);
+    const cont = cur && c && c.c && c.c === cur.color && !c.n && !c.x && toMin(t) === toMin(cur.end);
     if (cont) { cur.end = toTime(toMin(t) + 10); return; }
     if (cur) { out.push(cur); cur = null; }
-    if (c && !(c.c === 'light' && !c.n)) cur = { date, start: t, end: toTime(toMin(t) + 10), color: c.c || '', name: c.n || '' };
+    if (c && !(c.c === 'light' && !c.n)) cur = { date, start: t, end: toTime(toMin(t) + 10), color: c.c || '', name: c.n || '', excluded: !!c.x };
   });
   if (cur) out.push(cur);
   out.forEach(b => { b.minutes = toMin(b.end) - toMin(b.start); });
@@ -1084,13 +1094,15 @@ function buildReportHtml() {
   const { month, bookings, openDays, monthDays } = reportData;
   const [y, m] = month.split('-').map(Number);
   const byColor = {};
-  bookings.forEach(b => { byColor[b.color || 'none'] = (byColor[b.color || 'none'] || 0) + 1; });
-  const real = bookings.filter(b => b.color !== 'gray');
+  bookings.filter(b => !b.excluded).forEach(b => { byColor[b.color || 'none'] = (byColor[b.color || 'none'] || 0) + 1; });
+  const real = bookings.filter(b => b.color !== 'gray' && !b.excluded);
+  const exN = bookings.filter(b => b.excluded).length;
   const totalMin = real.reduce((a, b) => a + b.minutes, 0);
   const summary = '<div class="a4-sum">' +
     '<span>予約 <b>' + real.length + '</b> 件</span>' +
     '<span>予約時間 計 <b>' + Math.floor(totalMin / 60) + '</b> 時間' + (totalMin % 60 ? (totalMin % 60) + '分' : '') + '</span>' +
     '<span>営業日 <b>' + openDays + '</b> 日</span>' +
+    (exN ? '<span>統計から除外 ' + exN + '件</span>' : '') +
     Object.keys(COLOR_NAME).filter(k => byColor[k]).map(k => '<span><i class="dot" style="background:' + COLOR_HEX[k] + '"></i>' + COLOR_NAME[k] + ' ' + byColor[k] + '件</span>').join('') +
     '</div>';
 
@@ -1154,7 +1166,7 @@ async function loadReport() {
     });
     reportData = { month, bookings, openDays, monthDays: r.days };
     $('reportPages').innerHTML = buildReportHtml();
-    $('reportNote').textContent = 'A4横1枚（予約表と同じ並び）。グレーの枠（休み・研修など）は表に載せ、予約件数には数えていません。';
+    $('reportNote').textContent = 'A4横1枚（予約表と同じ並び）。グレーの枠（休み・研修など）と「統計から除外」にした予約は表に載せ、予約件数には数えていません。';
   } catch (err) { $('reportPages').innerHTML = ''; toast(err.message, true); }
 }
 
@@ -1195,9 +1207,9 @@ $('pdfBtn').addEventListener('click', async () => {
 
 // 会計くん用：CSV（UTF-8・見出し付き）。会計くんはネットにつながないので、ファイルで受け渡す
 function buildCsv() {
-  const head = ['日付', '曜日', '開始', '終了', '時間(分)', '色', '名前'];
+  const head = ['日付', '曜日', '開始', '終了', '時間(分)', '色', '名前', '統計除外'];
   const q = v => { const s = String(v ?? ''); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const rows = reportData.bookings.map(b => [b.date, WD[parse(b.date).getDay()], b.start, b.end, b.minutes, COLOR_NAME[b.color] || '', b.name]);
+  const rows = reportData.bookings.map(b => [b.date, WD[parse(b.date).getDay()], b.start, b.end, b.minutes, COLOR_NAME[b.color] || '', b.name, b.excluded ? '○' : '']);
   return '﻿' + [head, ...rows].map(r => r.map(q).join(',')).join('\r\n') + '\r\n';
 }
 $('csvBtn').addEventListener('click', () => {
@@ -1752,7 +1764,7 @@ async function renderStats() {
   const month = $('statMonth').value; if (!month) return;
   const [c, mres] = await Promise.all([api('/api/edit/cancels?month=' + month), api('/api/edit/month?month=' + month)]);
   if (mres.times) times = mres.times;
-  const booked = mres.days.flatMap(({ date, day }) => extractBookings(date, day)).filter(b => b.color !== 'gray');
+  const booked = mres.days.flatMap(({ date, day }) => extractBookings(date, day)).filter(b => b.color !== 'gray' && !b.excluded);
   const list = c.cancels.filter(x => x.color !== 'gray').sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
   const lead = x => daysBetween(jstDateOf(x.at), x.date);
   const groups = { '当日': 0, '前日': 0, '2〜6日前': 0, '1週間以上前': 0 };
@@ -1789,12 +1801,12 @@ async function renderStats() {
 // ・10:00より前・22:00より後の分も足す（ただし上限は12時間）
 // ・1日の稼働率 ＝ 埋まった時間 ÷ 12時間
 // ・月の稼働率 ＝ 各日の稼働率の平均（定休日・休診日は除く。「0%の日を除く」なら0%の日も除く）
-// ・グレー（休み・研修など）は数えない
+// ・グレー（休み・研修など）と「統計から除外」にした予約は数えない
 const UTIL_CAP = 12 * 60;
 function dayUtilization(date, day) {
   const filled = new Set();
   extractBookings(date, day)
-    .filter(b => b.color !== 'gray' && b.color !== 'light')
+    .filter(b => b.color !== 'gray' && !b.excluded)
     .forEach(b => {
       const len = Math.ceil(b.minutes / 30) * 30;
       for (let m = toMin(b.start); m < toMin(b.start) + len; m += 10) filled.add(m);
@@ -1806,7 +1818,7 @@ let utilExcludeZero = false;
 async function pageUtil() {
   pageBody().innerHTML = '<div class="pg-card">' + monthPicker('utilMonth', renderUtil) +
     '<label class="toggle-row" style="margin-top:10px"><span>0%の日を除いて平均する</span><input type="checkbox" id="utilZero"' + (utilExcludeZero ? ' checked' : '') + '></label>' +
-    '<p class="sub" style="margin:10px 0 0">会計くんと同じ計算です。予約1件は30分単位に切り上げ、人が重なった時間は1回だけ数えます。1日の稼働率＝埋まった時間÷12時間（10:00〜22:00。時間外の分も足し、上限12時間）。月の稼働率＝各日の稼働率の平均（日曜・休診日は除く）。グレーの枠は数えません。</p></div>' +
+    '<p class="sub" style="margin:10px 0 0">会計くんと同じ計算です。予約1件は30分単位に切り上げ、人が重なった時間は1回だけ数えます。1日の稼働率＝埋まった時間÷12時間（10:00〜22:00。時間外の分も足し、上限12時間）。月の稼働率＝各日の稼働率の平均（日曜・休診日は除く）。グレーの枠と「統計から除外」にした予約は数えません。</p></div>' +
     '<div id="utilOut" class="pg"></div>';
   $('utilZero').addEventListener('change', () => { utilExcludeZero = $('utilZero').checked; renderUtil(); });
   await renderUtil();
