@@ -163,6 +163,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c;
 .toast.error { background: #a9493d; }
 .saving { position: fixed; top: 8px; right: 10px; font-size: 11px; background: #fff; border: 1px solid #d5c1ae; padding: 3px 10px; border-radius: 12px; z-index: 60; }
 /* 月の予約記録（A4横） */
+#confirmModal { z-index: 75; } /* メニューのページの上にも出す */
 .report-overlay { position: fixed; inset: 0; z-index: 70; background: #e9e0d6; display: flex; flex-direction: column; }
 .report-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top)); background: var(--paper); border-bottom: 1px solid #e3d3c4; }
 .report-bar .title { font-weight: 800; margin-right: auto; }
@@ -286,6 +287,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c;
           <button type="button" id="exportBtn">バックアップを保存（JSON）</button>
           <button type="button" id="restoreBtn">バックアップから復元</button>
           <button type="button" data-page="import">スプレッドシートから取り込み</button>
+          <button type="button" data-page="kaikei">会計くんから取り込み</button>
           <hr>
           <button type="button" data-page="password" data-main-only>パスワード変更</button>
           <button type="button" id="subResetBtn" data-sub-only hidden>データをすべて消す</button>
@@ -1110,7 +1112,7 @@ $('csvBtn').addEventListener('click', () => {
 });
 
 /* ---------- メニューの各ページ ---------- */
-const PAGE_TITLES = { password: 'パスワード変更', import: 'スプレッドシートから取り込み', settings: '設定（予約の長さ）', stats: 'キャンセル統計', util: '稼働率', fixed: '固定予約・週のコピー' };
+const PAGE_TITLES = { password: 'パスワード変更', import: 'スプレッドシートから取り込み', settings: '設定（予約の長さ）', stats: 'キャンセル統計', util: '稼働率', fixed: '固定予約・週のコピー', kaikei: '会計くんから取り込み' };
 const LENGTH_CHOICES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 150, 180, 'all'];
 const lenText = v => v === 'all' ? '当日全て' : v + '分';
 const pageBody = () => $('pageBody');
@@ -1119,7 +1121,7 @@ function openPage(name) {
   $('pageTitle').textContent = PAGE_TITLES[name];
   pageBody().innerHTML = '<p class="empty">読み込み中…</p>';
   $('pageView').classList.remove('hidden');
-  ({ password: pagePassword, import: pageImport, settings: pageSettings, stats: pageStats, util: pageUtil, fixed: pageFixed })[name]().catch(err => { pageBody().innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; });
+  ({ password: pagePassword, import: pageImport, settings: pageSettings, stats: pageStats, util: pageUtil, fixed: pageFixed, kaikei: pageKaikei })[name]().catch(err => { pageBody().innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; });
 }
 document.querySelectorAll('[data-page]').forEach(b => b.addEventListener('click', () => openPage(b.dataset.page)));
 $('pageClose').addEventListener('click', () => { $('pageView').classList.add('hidden'); loadWeek().catch(() => {}); });
@@ -1271,6 +1273,106 @@ async function pageImport() {
       loadWeek().catch(() => {});
     } catch (err) { $('csvOut').innerHTML = '<div class="warn" style="margin-top:12px">取り込めませんでした：' + esc(err.message) + '</div>'; b.disabled = false; }
   });
+}
+
+/* ---------- 会計くんから取り込み（会計くんの「予約ちゃん移行」タブで作ったJSON） ---------- */
+let kaikeiUndo = null; // 直前の取り込みを戻すための、取り込み前の中身
+async function pageKaikei() {
+  const target = mode === 'sub' ? '予約ちゃん2' : '予約ちゃん';
+  pageBody().innerHTML =
+    '<div class="pg-card"><h3>会計くんの来院記録を取り込む</h3>' +
+    '<p class="sub">会計くんのタブ「予約ちゃん移行（一時）」で作ったファイル（.json）を、' + target + 'の予約表に入れます。' +
+    (mode === 'sub' ? '予約ちゃん2には「会計くん2_予約ちゃん2取込用_…json」を使ってください。' : '予約ちゃんには「予約ちゃん本体取込用_…json」を使ってください。') + '</p>' +
+    '<div class="pg-row"><label>ファイル（.json）<input type="file" id="kkFile" accept="application/json,.json"></label></div>' +
+    '<p class="sub" id="kkPicked" style="margin:6px 0 0">まだファイルが選ばれていません。</p>' +
+    '<div style="margin-top:10px;display:grid;gap:6px">' +
+    '<label class="sub" style="margin:0"><input type="checkbox" id="kkPast" checked> 今日以降の日は入れない（予約表の本物の予約を守る）</label>' +
+    '<label class="sub" style="margin:0"><input type="checkbox" id="kkKeep" checked> 予約表にすでに予約・休診がある日は入れない（外すとその日をまるごと置き換え）</label></div>' +
+    '<div class="actions" style="margin-top:12px"><button class="btn" type="button" id="kkCheck" disabled>1. 内容を確認</button><button class="btn primary" type="button" id="kkRun" disabled>2. 取り込む</button></div>' +
+    '<div id="kkOut"></div>' +
+    (kaikeiUndo ? '<div class="actions" style="margin-top:12px"><button class="btn" type="button" id="kkUndo">直前の取り込みを元に戻す（' + Object.keys(kaikeiUndo).length + '日分）</button></div>' : '') +
+    '</div>' +
+    '<div class="pg-card"><h3>注意</h3><p class="sub" style="margin:0">取り込む日は、その日の予約表がまるごとファイルの中身になります。念のため、先に ☰ →「バックアップを保存」をしておくと確実に戻せます。<br>「元に戻す」は、このページを閉じても再読み込みするまで使えます。</p></div>';
+
+  let file = null, plan = null;
+  const out = html => { $('kkOut').innerHTML = html; };
+  const invalidate = () => { plan = null; $('kkRun').disabled = true; };
+  $('kkFile').addEventListener('change', async e => {
+    invalidate();
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (!data || data.app !== 'yoyaku-chan' || !data.days || typeof data.days !== 'object') throw new Error('会計くんで作った予約ちゃん用のファイルではありません。');
+      file = { name: f.name, data };
+      $('kkPicked').textContent = '選んだファイル：' + f.name + '（' + Object.keys(data.days).length + '日分）';
+      $('kkCheck').disabled = false;
+      const wrong = mode === 'sub' ? /本体取込用/.test(f.name) : /予約ちゃん2取込用/.test(f.name);
+      out(wrong ? '<div class="warn" style="margin-top:12px">ファイル名が' + (mode === 'sub' ? '予約ちゃん（本体）用' : '予約ちゃん2用') + 'になっています。取り込む先が合っているか確認してください。</div>' : '');
+    } catch (err) { file = null; $('kkCheck').disabled = true; $('kkPicked').textContent = 'ファイルを読めませんでした'; out('<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'); }
+  });
+  ['kkPast', 'kkKeep'].forEach(id => $(id).addEventListener('change', invalidate));
+
+  $('kkCheck').addEventListener('click', async () => {
+    if (!file) return;
+    out('<p class="empty">予約表の今の中身と照らし合わせています…</p>');
+    try {
+      const cur = (await api('/api/edit/export')).days || {};
+      const today = fmt(new Date());
+      const dates = Object.keys(file.data.days).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+      const take = {}, before = {};
+      let future = 0, existing = 0, bookings = 0;
+      for (const d of dates) {
+        if ($('kkPast').checked && d >= today) { future++; continue; }
+        const has = !!cur[d];
+        if (has && $('kkKeep').checked) { existing++; continue; }
+        take[d] = file.data.days[d];
+        before[d] = cur[d] || { closed: false, cells: {} };
+        bookings += extractBookings(d, normalizeClientDay(take[d])).length;
+      }
+      const n = Object.keys(take).length;
+      plan = { take, before };
+      const overwrite = Object.keys(take).filter(d => cur[d]).length;
+      out('<div class="result-box" style="margin-top:12px">【確認】まだ保存していません\n' +
+        'ファイルの期間：' + (dates[0] || '－') + ' 〜 ' + (dates[dates.length - 1] || '－') + '（' + dates.length + '日）\n' +
+        '取り込む日：' + n + '日（予約 ' + bookings + '件）' + (n ? '　' + Object.keys(take)[0] + ' 〜 ' + Object.keys(take)[n - 1] : '') + '\n' +
+        (future ? '今日以降なので入れない日：' + future + '日\n' : '') +
+        (existing ? 'すでに予約・休診があるので入れない日：' + existing + '日\n' : '') +
+        (overwrite ? '⚠ 置き換える日（今の予約は消えます）：' + overwrite + '日\n' : '') + '</div>');
+      $('kkRun').disabled = !n;
+    } catch (err) { out('<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'); }
+  });
+
+  $('kkRun').addEventListener('click', async () => {
+    if (!plan) return;
+    const n = Object.keys(plan.take).length;
+    if (!(await askConfirm(n + '日分を' + target + 'に取り込みます。', '取り込む'))) return;
+    $('kkRun').disabled = $('kkCheck').disabled = true;
+    try {
+      const r = await restoreInChunks({ app: 'yoyaku-chan', version: 1, days: plan.take }, k => out('<p class="empty">保存しています… ' + k + ' / ' + n + '日</p>'));
+      kaikeiUndo = plan.before;
+      toast(r.restoredDays + '日分を取り込みました');
+      await pageKaikei();
+      out('<div class="result-box" style="margin-top:12px">【取り込み完了】' + r.restoredDays + '日分を入れました。\n予約表・稼働率で確認してください。</div>');
+    } catch (err) { out('<div class="warn" style="margin-top:12px">取り込めませんでした：' + esc(err.message) + '</div>'); $('kkCheck').disabled = false; }
+  });
+
+  if (kaikeiUndo) $('kkUndo').addEventListener('click', async () => {
+    const n = Object.keys(kaikeiUndo).length;
+    if (!(await askConfirm('直前に取り込んだ ' + n + '日分を、取り込む前の状態に戻します。', '元に戻す'))) return;
+    try {
+      await restoreInChunks({ app: 'yoyaku-chan', version: 1, days: kaikeiUndo });
+      kaikeiUndo = null;
+      toast(n + '日分を元に戻しました');
+      await pageKaikei();
+    } catch (err) { toast(err.message, true); }
+  });
+}
+// 取り込む前に件数を数えるための簡易な形そろえ（保存時はサーバーが正式に整える）
+function normalizeClientDay(raw) {
+  const cells = {};
+  if (raw && raw.cells && typeof raw.cells === 'object') for (const [t, c] of Object.entries(raw.cells)) if (c && typeof c === 'object' && COLOR_HEX[c.c] && c.c !== 'light') cells[t] = c;
+  return { closed: !!(raw && raw.closed), cells };
 }
 
 // 日数が多いと時間がかかるので、60日ずつに分けて送る
