@@ -1795,14 +1795,16 @@ async function renderStats() {
 }
 
 /* 稼働率（会計くんと同じ計算方法） */
-// ・対象は 10:00〜22:00 の12時間（720分）
+// ・対象は 10:00〜22:00 の12時間から、毎日の休憩1時間を引いた11時間（660分）
 // ・予約1件の長さは30分単位に切り上げ、開始時刻から10分マスを埋める
 // ・人が重なった時間は1回だけ数える
-// ・10:00より前・22:00より後の分も足す（ただし上限は12時間）
-// ・1日の稼働率 ＝ 埋まった時間 ÷ 12時間
+// ・10:00より前・22:00より後の分も足す（ただし上限は11時間）
+// ・1日の稼働率 ＝ 埋まった時間 ÷ 11時間（12時間 − 休憩1時間）
 // ・月の稼働率 ＝ 各日の稼働率の平均（定休日・休診日は除く。「0%の日を除く」なら0%の日も除く）
 // ・グレー（休み・研修など）と「統計から除外」にした予約は数えない
-const UTIL_CAP = 12 * 60;
+const UTIL_OPEN = 12 * 60;   // 営業 10:00〜22:00
+const UTIL_BREAK = 60;       // 毎日の休憩（稼働できる時間から引く）
+const UTIL_CAP = UTIL_OPEN - UTIL_BREAK;
 function dayUtilization(date, day) {
   const filled = new Set();
   extractBookings(date, day)
@@ -1818,7 +1820,7 @@ let utilExcludeZero = false;
 async function pageUtil() {
   pageBody().innerHTML = '<div class="pg-card">' + monthPicker('utilMonth', renderUtil) +
     '<label class="toggle-row" style="margin-top:10px"><span>0%の日を除いて平均する</span><input type="checkbox" id="utilZero"' + (utilExcludeZero ? ' checked' : '') + '></label>' +
-    '<p class="sub" style="margin:10px 0 0">会計くんと同じ計算です。予約1件は30分単位に切り上げ、人が重なった時間は1回だけ数えます。1日の稼働率＝埋まった時間÷12時間（10:00〜22:00。時間外の分も足し、上限12時間）。月の稼働率＝各日の稼働率の平均（日曜・休診日は除く）。グレーの枠と「統計から除外」にした予約は数えません。</p></div>' +
+    '<p class="sub" style="margin:10px 0 0">会計くんと同じ計算です。予約1件は30分単位に切り上げ、人が重なった時間は1回だけ数えます。1日の稼働率＝埋まった時間÷11時間（営業10:00〜22:00の12時間から毎日の休憩1時間を引いた時間。時間外の分も足し、上限11時間）。月の稼働率＝各日の稼働率の平均（日曜・休診日は除く）。グレーの枠と「統計から除外」にした予約は数えません。</p></div>' +
     '<div id="utilOut" class="pg"></div>';
   $('utilZero').addEventListener('change', () => { utilExcludeZero = $('utilZero').checked; renderUtil(); });
   await renderUtil();
