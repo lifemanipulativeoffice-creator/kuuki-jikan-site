@@ -102,6 +102,10 @@ table.grid { border-collapse: separate; border-spacing: 0; width: 100%; min-widt
 .c-red   { background: var(--c-red) !important; color: #fff; }
 .c-gray  { background: var(--c-gray) !important; color: #fff; }
 .c-light { background: var(--c-light) !important; color: #3e5a60; }
+/* なぞって選ぶ（ドラッグ・長押しスライド） */
+.grid td.drag-sel { background: rgba(157,87,76,.38) !important; }
+.grid.dragging, .grid.dragging td { cursor: crosshair; }
+#gridBody { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .grid td.cont { color: transparent; }
 /* PC：1か月表（日付が縦・時間が横。画面の高さに合わせて行の高さを自動で決める） */
 table.grid.month { min-width: 900px; --rowh: 22px; --fs: 11px; }
@@ -657,9 +661,94 @@ function renderCols() {
 }
 
 $('gridBody').addEventListener('click', e => {
+  if (dragState.suppressClick) { dragState.suppressClick = false; return; }
   const td = e.target.closest('td');
   if (td && td.dataset.date) openCell(td.dataset.date, td.dataset.time);
 });
+
+/* ---------- なぞって予約の長さを選ぶ ----------
+   PC：空いている枠からマウスを押したまま動かす → 離すと記入画面（長さは選んだ分）
+   スマホ・タブレット：空いている枠を長押し（約0.4秒）→ そのまま指を動かす → 離すと記入画面
+   ほかの予約がある枠の手前で止まる。予約のある枠から始めたときは今までどおりタップで開く */
+const dragState = { pending: null, active: null, timer: 0, suppressClick: false };
+function dragDay(date) { const e = days.find(d => d.date === date); return e ? e.day : null; }
+function dragClear() {
+  document.querySelectorAll('#gridBody td.drag-sel').forEach(td => td.classList.remove('drag-sel'));
+  $('gridTable').classList.remove('dragging');
+}
+// 起点から指している時刻まで（間に予約があればその手前まで）
+function dragRange(a, toTimeStr) {
+  const day = dragDay(a.date);
+  const from = toMin(a.time), to = toMin(toTimeStr), dir = to >= from ? 10 : -10;
+  let lo = from, hi = from;
+  for (let m = from + dir; dir > 0 ? m <= to : m >= to; m += dir) {
+    if (!times.includes(toTime(m)) || isBlocking(day.cells[toTime(m)])) break;
+    if (dir > 0) hi = m; else lo = m;
+  }
+  return { start: toTime(lo), minutes: hi - lo + 10 };
+}
+function dragPaint(a) {
+  dragClear();
+  $('gridTable').classList.add('dragging');
+  const s = toMin(a.range.start), e = s + a.range.minutes;
+  document.querySelectorAll('#gridBody td[data-date="' + a.date + '"]').forEach(td => {
+    const m = toMin(td.dataset.time);
+    if (m >= s && m < e) td.classList.add('drag-sel');
+  });
+}
+function dragStart(p) {
+  dragState.active = { date: p.date, time: p.time, range: { start: p.time, minutes: 10 } };
+  dragState.pending = null;
+  dragPaint(dragState.active);
+  if (p.touch && navigator.vibrate) try { navigator.vibrate(15); } catch {}
+}
+function dragTdAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const td = el && el.closest ? el.closest('#gridBody td') : null;
+  return td && td.dataset.date ? td : null;
+}
+$('gridBody').addEventListener('pointerdown', e => {
+  if (e.button > 0) return;
+  const td = e.target.closest('td');
+  if (!td || !td.dataset.date) return;
+  const day = dragDay(td.dataset.date);
+  if (!day || isBlocking(day.cells[td.dataset.time])) return; // 予約のある枠は今までどおり
+  const touch = e.pointerType !== 'mouse';
+  dragState.pending = { date: td.dataset.date, time: td.dataset.time, x: e.clientX, y: e.clientY, touch };
+  clearTimeout(dragState.timer);
+  if (touch) dragState.timer = setTimeout(() => { if (dragState.pending) dragStart(dragState.pending); }, 400);
+});
+document.addEventListener('pointermove', e => {
+  const p = dragState.pending;
+  if (p && !dragState.active) {
+    const moved = Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y) > 8;
+    if (!moved) return;
+    if (p.touch) { clearTimeout(dragState.timer); dragState.pending = null; return; } // 長押し前に動いた＝スクロール
+    dragStart(p);
+  }
+  const a = dragState.active;
+  if (!a) return;
+  const td = dragTdAt(e.clientX, e.clientY);
+  if (!td || td.dataset.date !== a.date) return;
+  const r = dragRange(a, td.dataset.time);
+  if (r.start !== a.range.start || r.minutes !== a.range.minutes) { a.range = r; dragPaint(a); }
+});
+// 長押しで選び始めたら画面がスクロールしないようにする
+document.addEventListener('touchmove', e => { if (dragState.active) e.preventDefault(); }, { passive: false });
+$('gridBody').addEventListener('contextmenu', e => { if (dragState.pending || dragState.active) e.preventDefault(); });
+function dragEnd(cancel) {
+  clearTimeout(dragState.timer);
+  dragState.pending = null;
+  const a = dragState.active;
+  dragState.active = null;
+  if (!a) return;
+  dragClear();
+  dragState.suppressClick = true;
+  setTimeout(() => { dragState.suppressClick = false; }, 400);
+  if (!cancel) openCell(a.date, a.range.start, a.range.minutes > 10 ? a.range.minutes : 0); // 1マスだけなら通常の長さ
+}
+document.addEventListener('pointerup', () => dragEnd(false));
+document.addEventListener('pointercancel', () => dragEnd(true));
 
 /* ---------- 端末ごとの表示期間（スマホ1週・タブレット2週・PC4週） ---------- */
 const VIEW_KEY = 'yoyaku_view_weeks';
@@ -792,7 +881,7 @@ function lengthLabel(v, start) {
   return v + '分（' + start + '〜' + toTime(Math.min(toMin(start) + v, 22 * 60)) + '）' + (v > current.max ? ' × 入りません' : '');
 }
 
-function openCell(date, time) {
+function openCell(date, time, presetLen) {
   const day = days.find(d => d.date === date).day;
   const bk = findBooking(day, time);
   const cell = day.cells[bk.start];
@@ -807,11 +896,13 @@ function openCell(date, time) {
   const ownLen = bk.own.length * 10;
   const isAllDay = bk.own.length === times.length;
   if (ownLen && !isAllDay && !opts.includes(ownLen)) opts.push(ownLen);
+  const dragLen = !cell && presetLen ? presetLen : 0; // なぞって選んだ長さ
+  if (dragLen && !opts.includes(dragLen)) opts.push(dragLen);
   opts.sort((a, b) => (a === 'all') - (b === 'all') || a - b);
   const sel = $('lengthSelect');
   sel.innerHTML = '';
   opts.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = lengthLabel(v, bk.start); sel.appendChild(o); });
-  sel.value = String(isAllDay ? 'all' : ownLen || settings.defaultLength);
+  sel.value = String(isAllDay ? 'all' : ownLen || dragLen || settings.defaultLength);
   $('existingActions').classList.toggle('hidden', !cell);
   current.series = cell && cell.s ? cell.s : '';
   $('seriesBox').classList.toggle('hidden', !current.series);
