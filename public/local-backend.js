@@ -68,6 +68,7 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
     if (url.pathname === '/api/login') {
       return body.password === DEMO_PASSWORD ? reply({ ok: true, token: 'demo-token' }) : reply({ ok: false, error: 'パスワードが違います。' }, 401);
     }
+    if (url.pathname === '/api/week') return reply({ ok: true, days: publicWeek(url.searchParams.get('start')) }); // 患者向け（○×だけ）
     if (auth !== 'Bearer demo-token') return reply({ ok: false, error: 'ログインしてください。' }, 401);
     if (url.pathname === '/api/edit/week') {
       const start = url.searchParams.get('start');

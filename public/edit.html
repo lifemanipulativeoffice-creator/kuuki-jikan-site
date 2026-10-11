@@ -102,6 +102,18 @@ table.grid { border-collapse: separate; border-spacing: 0; width: 100%; min-widt
 .c-red   { background: var(--c-red) !important; color: #fff; }
 .c-gray  { background: var(--c-gray) !important; color: #fff; }
 .c-light { background: var(--c-light) !important; color: #3e5a60; }
+/* 患者さんが見るページ（○×表） */
+.pt-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; font-size: 13px; }
+.pt-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; background: #fff; }
+.pt-table th, .pt-table td { border: 1px solid #d8c8bb; text-align: center; height: 26px; padding: 0; }
+.pt-table thead th { background: #9d574c; color: #fff; font-size: 10px; height: 34px; line-height: 1.2; }
+.pt-table tbody th { background: #fff7f0; font-size: 10px; width: 46px; font-weight: 600; }
+.pt-ok { background: #e9f4ed; color: #397354; font-weight: 800; }
+.pt-cs { background: #e9f4ed; color: #5b4032; font-size: 9px; font-weight: 700; }
+.pt-ng { background: #f2dfdc; color: #a9493d; font-weight: 800; }
+.pt-off { background: #eee; color: #999; font-size: 10px; }
+.pt-legend { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; }
+.pt-legend i { font-style: normal; display: inline-block; min-width: 22px; padding: 0 5px; margin-right: 4px; border-radius: 11px; text-align: center; }
 /* 統計から除外した予約（休憩・打ち合わせなど）は斜線 */
 .grid td.ex::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 3px, transparent 3px 8px); }
 .legend .ex-i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; background: #9d574c repeating-linear-gradient(135deg, rgba(255,255,255,.6) 0 2px, transparent 2px 5px); }
@@ -284,7 +296,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c;
       <div class="menu">
         <button class="btn" id="menuBtn" type="button" aria-label="メニュー" style="min-height:38px;padding:6px 12px">☰</button>
         <div class="menu-list hidden" id="menuList">
-          <a href="/" target="_blank" rel="noopener" data-main-only>患者向けの表示を見る</a>
+          <button type="button" data-page="patient" data-main-only>患者さんが見るページ（○×表）</button>
           <button type="button" id="reloadBtn">最新の状態に更新</button>
           <hr>
           <button type="button" id="reportBtn">月の予約記録（PDF・会計くん用）</button>
@@ -1219,7 +1231,7 @@ $('csvBtn').addEventListener('click', () => {
 });
 
 /* ---------- メニューの各ページ ---------- */
-const PAGE_TITLES = { password: 'パスワード変更', import: 'スプレッドシートから取り込み', settings: '設定（予約の長さ）', stats: 'キャンセル統計', util: '稼働率', fixed: '固定予約・週のコピー', kaikei: '会計くんから取り込み' };
+const PAGE_TITLES = { password: 'パスワード変更', import: 'スプレッドシートから取り込み', settings: '設定（予約の長さ）', stats: 'キャンセル統計', util: '稼働率', fixed: '固定予約・週のコピー', kaikei: '会計くんから取り込み', patient: '患者さんが見るページ（○×表）' };
 const LENGTH_CHOICES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 150, 180, 'all'];
 const lenText = v => v === 'all' ? '当日全て' : v + '分';
 const pageBody = () => $('pageBody');
@@ -1228,7 +1240,7 @@ function openPage(name) {
   $('pageTitle').textContent = PAGE_TITLES[name];
   pageBody().innerHTML = '<p class="empty">読み込み中…</p>';
   $('pageView').classList.remove('hidden');
-  ({ password: pagePassword, import: pageImport, settings: pageSettings, stats: pageStats, util: pageUtil, fixed: pageFixed, kaikei: pageKaikei })[name]().catch(err => { pageBody().innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; });
+  ({ password: pagePassword, import: pageImport, settings: pageSettings, stats: pageStats, util: pageUtil, fixed: pageFixed, kaikei: pageKaikei, patient: pagePatient })[name]().catch(err => { pageBody().innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; });
 }
 document.querySelectorAll('[data-page]').forEach(b => b.addEventListener('click', () => openPage(b.dataset.page)));
 $('pageClose').addEventListener('click', () => { $('pageView').classList.add('hidden'); loadWeek().catch(() => {}); });
@@ -1380,6 +1392,43 @@ async function pageImport() {
       loadWeek().catch(() => {});
     } catch (err) { $('csvOut').innerHTML = '<div class="warn" style="margin-top:12px">取り込めませんでした：' + esc(err.message) + '</div>'; b.disabled = false; }
   });
+}
+
+/* ---------- 患者さんが見るページ（○×表）をこの画面の中で確認する ----------
+   中身は患者向けページ（/）と同じ /api/week の結果。名前は含まれない */
+let ptWeek = null;
+async function pagePatient() {
+  const thisMon = getMonday(new Date());
+  if (!ptWeek || ptWeek < thisMon) ptWeek = new Date(thisMon);
+  const url = /^https?:/.test(location.protocol) ? location.origin + '/' : '';
+  pageBody().innerHTML =
+    '<div class="pg-card"><p class="sub" style="margin:0">患者さんには、この○×表だけが見えます（名前は出ません）。今週より前の週は患者さんには見えません。' +
+    (url ? '<br>患者さん用のURL：<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + '</a>（別のタブで開く）' : '') + '</p></div>' +
+    '<div class="pg-card"><div class="pt-nav"><button class="btn" type="button" id="ptPrev">‹ 前週</button><b id="ptLabel"></b><button class="btn" type="button" id="ptNext">次週 ›</button></div>' +
+    '<div class="pg-table-wrap"><table class="pt-table"><thead><tr id="ptHead"></tr></thead><tbody id="ptBody"></tbody></table></div>' +
+    '<div class="pt-legend"><span><i class="pt-ok">○</i>予約可能</span><span><i class="pt-cs">要相談</i>時間調整が必要</span><span><i class="pt-ng">×</i>予約不可</span></div></div>';
+  $('ptPrev').addEventListener('click', () => { ptWeek = addDays(ptWeek, -7); renderPatient(); });
+  $('ptNext').addEventListener('click', () => { ptWeek = addDays(ptWeek, 7); renderPatient(); });
+  await renderPatient();
+}
+async function renderPatient() {
+  const thisMon = getMonday(new Date());
+  if (ptWeek < thisMon) ptWeek = new Date(thisMon);
+  $('ptPrev').style.visibility = ptWeek > thisMon ? 'visible' : 'hidden';
+  const start = fmt(ptWeek);
+  $('ptLabel').textContent = label(start) + ' ～ ' + label(fmt(addDays(ptWeek, 6)));
+  $('ptBody').innerHTML = '<tr><td colspan="8">読み込み中…</td></tr>';
+  try {
+    const r = await api('/api/week?start=' + start);
+    const ds = r.days;
+    $('ptHead').innerHTML = '<th>時間</th>' + ds.map(d => '<th>' + label(d.date).replace('(', '<br>(') + '</th>').join('');
+    $('ptBody').innerHTML = ds[0].slots.map((s0, i) => '<tr><th>' + s0.time + '</th>' + ds.map(d => {
+      const st = d.slots[i].status;
+      if (parse(d.date).getDay() === 0 || (d.closed && st !== 'none')) return '<td class="pt-off">休</td>';
+      if (st === 'none') return '<td class="pt-off">－</td>';
+      return st === 'available' ? '<td class="pt-ok">○</td>' : st === 'consult' ? '<td class="pt-cs">要相談</td>' : '<td class="pt-ng">×</td>';
+    }).join('') + '</tr>').join('');
+  } catch (err) { $('ptBody').innerHTML = '<tr><td colspan="8">' + esc(err.message) + '</td></tr>'; }
 }
 
 /* ---------- 会計くんから取り込み（会計くんの「予約ちゃん移行」タブで作ったJSON） ---------- */
