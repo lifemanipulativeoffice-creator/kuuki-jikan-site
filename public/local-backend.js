@@ -8,7 +8,7 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
   const p2 = n => String(n).padStart(2, '0');
   const toT = m => p2(Math.floor(m / 60)) + ':' + p2(m % 60);
   const toM = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-  const TIMES = []; for (let m = 540; m < 1320; m += 10) TIMES.push(toT(m));
+  const TIMES = []; for (let m = 540; m < 1380; m += 10) TIMES.push(toT(m));
   const DISPLAY = []; for (let m = 600; m <= 1260; m += 30) DISPLAY.push(toT(m));
   const ymd = d => d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
   const addD = (s, n) => { const [y, m, d] = s.split('-').map(Number); return ymd(new Date(y, m - 1, d + n)); };
@@ -49,7 +49,7 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
     if (c.c && COLORS[c.c].blocks) return true;
     return (t < 600 || t >= 1320) && !(c.c === 'light' && !c.n) && !!(c.c || c.n);
   }
-  const rangeOcc = (day, a, b) => { for (let t = a; t < b; t += 10) { if (t >= 540 && t < 1320 && occupied(day, t)) return true; } return false; };
+  const rangeOcc = (day, a, b) => { for (let t = a; t < b; t += 10) { if (t >= 540 && t < 1380 && occupied(day, t)) return true; } return false; };
   const publicWeek = start => Array.from({ length: 7 }, (_, i) => {
     const date = addD(start, i), day = getDay(date), closed = wday(date) === 0 || day.closed;
     return { date, closed, slots: DISPLAY.map(time => {
@@ -172,7 +172,7 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
       const day = JSON.parse(JSON.stringify(getDay(date)));
       if (day.closed) { list.forEach(b => res.skipped.push({ date, start: b.start, name: b.name, reason: '休診日' })); return; }
       list.forEach(b => {
-        const ts = []; for (let m = toM(b.start); m < toM(b.start) + b.minutes; m += 10) if (m < 1320) ts.push(toT(m));
+        const ts = []; for (let m = toM(b.start); m < toM(b.start) + b.minutes; m += 10) if (m < 1380) ts.push(toT(m));
         const f = day.cells[ts[0]];
         if (f && f.c === (b.color || undefined) && (f.n || '') === b.name && ts.slice(1).every(t => day.cells[t] && day.cells[t].c === f.c && !day.cells[t].n)) { res.existing++; return; }
         const hit = ts.find(t => day.cells[t] && ((day.cells[t].c && COLORS[day.cells[t].c].blocks) || day.cells[t].n));

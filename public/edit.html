@@ -442,6 +442,7 @@ const subBackend = makeLocalBackend('yoyaku_chan2_data_v1', SUB_PASSWORD);
 // プレビュー（Claudeの画面）では本体もサーバーにつながらないので端末内で動かす
 const mainBackend = window.YOYAKU_PREVIEW ? makeLocalBackend('yoyaku_chan_preview_main_v1', '0000') : null;
 const BUSINESS_START = 10 * 60, BUSINESS_END = 22 * 60; // 21時台も正規の営業時間
+const GRID_END = 23 * 60; // 予約表は 22:50 の枠まで（22:00開始の施術用。患者向けには出さない）
 
 /* ---------- 小道具 ---------- */
 const $ = id => document.getElementById(id);
@@ -855,7 +856,7 @@ function findBooking(day, time) {
     if (prev.n) break;
   }
   const own = [toTime(start)];
-  for (let m = start + 10; m < 22 * 60; m += 10) {
+  for (let m = start + 10; m < GRID_END; m += 10) {
     const c = day.cells[toTime(m)];
     if (!c || c.c !== cell.c || c.n || !cell.c) break;
     own.push(toTime(m));
@@ -867,13 +868,13 @@ function findBooking(day, time) {
 function maxMinutes(day, start, own) {
   const ownSet = new Set(own);
   let m = toMin(start);
-  while (m < 22 * 60 && (ownSet.has(toTime(m)) || !isBlocking(day.cells[toTime(m)]))) m += 10;
+  while (m < GRID_END && (ownSet.has(toTime(m)) || !isBlocking(day.cells[toTime(m)]))) m += 10;
   return m - toMin(start);
 }
 
 let settings = { lengths: [10, 20, 30, 60, 90, 120, 'all'], defaultLength: 60 };
 
-// 選んだ長さで使う枠（「当日全て」は 9:00〜21:50 の全部）
+// 選んだ長さで使う枠（「当日全て」は 9:00〜22:50 の全部）
 function selectedRange() {
   const v = $('lengthSelect').value;
   return v === 'all' ? times.slice() : rangeTimes(current.time, Number(v));
@@ -892,7 +893,7 @@ function updateOverlapWarn() {
   } else if (writing && Number(v) > current.max) {
     const t = toTime(toMin(current.time) + current.max);
     const c = day.cells[t];
-    msg = (t >= '22:00' ? '22:00 を過ぎるため入りません。'
+    msg = (t >= '23:00' ? '23:00 を過ぎるため入りません。'
       : t + ' から' + (c && c.n ? '「' + c.n + '」の' : 'ほかの') + '予約があるため、' + v + '分は入りません。') +
       (current.max > 0 ? 'この時刻からは最大 ' + current.max + '分 までです。' : '');
   }
@@ -902,8 +903,8 @@ function updateOverlapWarn() {
 }
 
 function lengthLabel(v, start) {
-  if (v === 'all') return '当日全て（9:00〜21:50）' + (current.allBlocked ? ' × 入りません' : '');
-  return v + '分（' + start + '〜' + toTime(Math.min(toMin(start) + v, 22 * 60)) + '）' + (v > current.max ? ' × 入りません' : '');
+  if (v === 'all') return '当日全て（9:00〜22:50）' + (current.allBlocked ? ' × 入りません' : '');
+  return v + '分（' + start + '〜' + toTime(Math.min(toMin(start) + v, GRID_END)) + '）' + (v > current.max ? ' × 入りません' : '');
 }
 
 function openCell(date, time, presetLen) {
@@ -1808,8 +1809,8 @@ function parseSheetCsv(text, opt) {
     const named = cols.filter(c => (r[c] || '').trim());
     named.forEach((c, k) => {
       const start = toMin(colTime[c]);
-      const nextStart = k + 1 < named.length ? toMin(colTime[named[k + 1]]) : 22 * 60;
-      const len = Math.min(opt.minutes, nextStart - start, 22 * 60 - start);
+      const nextStart = k + 1 < named.length ? toMin(colTime[named[k + 1]]) : GRID_END;
+      const len = Math.min(opt.minutes, nextStart - start, GRID_END - start);
       if (len < opt.minutes) stats.shortened++;
       let name = (r[c] || '').trim().replace(/[\u0000-\u001f]/g, '');
       if ([...name].length > 20) { stats.truncated++; name = [...name].slice(0, 20).join(''); }
@@ -1900,7 +1901,7 @@ async function renderStats() {
 // ・対象は 10:00〜22:00 の12時間から、毎日の休憩1時間を引いた11時間（660分）
 // ・予約1件の長さは30分単位に切り上げ、開始時刻から10分マスを埋める
 // ・人が重なった時間は1回だけ数える
-// ・10:00より前・22:00より後の分も足す（ただし上限は11時間）
+// ・10:00より前・22:00以降（22時台の予約）の分も足す（ただし上限は11時間）
 // ・1日の稼働率 ＝ 埋まった時間 ÷ 稼働できる時間（12時間 − 休憩1時間 − グレー・統計除外の時間）
 // ・月の稼働率 ＝ 各日の稼働率の平均（定休日・休診日は除く。「0%の日を除く」なら0%の日も除く）
 // ・グレー（休み・研修など）と「統計から除外」にした予約は数えない

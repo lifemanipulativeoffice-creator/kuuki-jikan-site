@@ -323,4 +323,18 @@ assert.ok(r.body.days > 0);
 assert.equal(Object.keys((await call('GET', '/api/edit/export', null, token2)).body.days).length, 0);
 assert.equal((await call('POST', '/api/edit/clear', { all: true, cancels: true }, null)).status, 401);
 
+// 22) 22:00開始の予約（22:50の枠まで入る。患者向けに22時の枠は出ない）
+r = await call('POST', '/api/edit/cells', { date: '2026-12-23', times: T('22:00', 60), color: 'blue', name: '夜の人' }, token2);
+assert.equal(r.status, 200);
+assert.ok(r.body.day.cells['22:00'].n === '夜の人' && r.body.day.cells['22:50']);
+assert.equal((await call('POST', '/api/edit/cells', { date: '2026-12-23', times: ['23:00'], color: 'blue' }, token2)).status, 400);
+{
+  const wkN = (await call('GET', '/api/edit/week?start=2026-12-21', null, token2)).body;
+  assert.equal(wkN.times[wkN.times.length - 1], '22:50');
+  assert.ok(wkN.days[2].day.cells['22:00']);
+  const pub = (await call('GET', '/api/week?start=2026-12-21')).body.days[2];
+  assert.equal(pub.slots[pub.slots.length - 1].time, '21:00');
+  assert.ok(!pub.slots.some(x => x.time >= '22:00'));
+}
+
 console.log('ALL TESTS PASSED');
