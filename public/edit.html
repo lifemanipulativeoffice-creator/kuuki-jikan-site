@@ -1877,9 +1877,76 @@ async function pageUtil() {
   pageBody().innerHTML = '<div class="pg-card">' + monthPicker('utilMonth', renderUtil) +
     '<label class="toggle-row" style="margin-top:10px"><span>0%の日を除いて平均する</span><input type="checkbox" id="utilZero"' + (utilExcludeZero ? ' checked' : '') + '></label>' +
     '<p class="sub" style="margin:10px 0 0">会計くんと同じ計算です。予約1件は30分単位に切り上げ、人が重なった時間は1回だけ数えます。1日の稼働率＝埋まった時間÷稼働できる時間。稼働できる時間＝営業10:00〜22:00の12時間 − 毎日の休憩1時間 − その日のグレー・「統計から除外」の時間（例：打ち合わせ1時間なら10時間）。時間外の施術も足し、上限は稼働できる時間まで。月の稼働率＝各日の稼働率の平均（日曜・休診日・1日まるごとグレーの日は除く）。※毎日の休憩1時間は自動で引くので、予約表に入れると二重に引かれます。</p></div>' +
-    '<div id="utilOut" class="pg"></div>';
+    '<div id="utilOut" class="pg"></div>' +
+    '<div class="pg-card"><h3>会計くん用 稼働率データ（JSON）</h3>' +
+    '<p class="sub">会計くんの「予約ちゃんのデータで修正」で読み込むファイルです。休憩・グレー・「統計から除外」を引いた稼働できる時間が入るので、会計くんの稼働率も予約ちゃんと同じになります。未来の日は入れません。</p>' +
+    '<div class="pg-row"><label>開始日<input type="date" id="occFrom"></label><label>終了日<input type="date" id="occTo"></label></div>' +
+    '<div class="actions" style="margin-top:12px"><button class="btn primary" type="button" id="occBtn">会計くん用 稼働率データ（JSON）</button></div>' +
+    '<div id="occOut"></div></div>';
   $('utilZero').addEventListener('change', () => { utilExcludeZero = $('utilZero').checked; renderUtil(); });
+  $('utilMonth').addEventListener('change', setOccDefaults);
+  $('occBtn').addEventListener('click', exportOccupancy);
+  setOccDefaults();
   await renderUtil();
+}
+// 初期値：表示中の月の1日〜末日（今日より先は入れない）
+function setOccDefaults() {
+  const month = $('utilMonth').value; if (!month) return;
+  const [y, m] = month.split('-').map(Number);
+  const today = fmt(new Date());
+  const last = fmt(new Date(y, m, 0));
+  $('occFrom').value = month + '-01';
+  $('occTo').value = last < today ? last : today;
+  $('occTo').max = today; $('occFrom').max = today;
+}
+// 日本時間などローカル時刻のまま「2026-10-11T16:30:00+09:00」の形にする
+function localIso(d) {
+  const off = -d.getTimezoneOffset(), sign = off >= 0 ? '+' : '-', a = Math.abs(off);
+  return fmt(d) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + sign + pad(Math.floor(a / 60)) + ':' + pad(a % 60);
+}
+async function exportOccupancy() {
+  const out = html => { $('occOut').innerHTML = html; };
+  const today = fmt(new Date());
+  let from = $('occFrom').value, to = $('occTo').value;
+  if (!from || !to) return out('<div class="warn" style="margin-top:12px">開始日と終了日を選んでください。</div>');
+  if (to > today) to = today;
+  if (from > to) return out('<div class="warn" style="margin-top:12px">開始日が終了日（今日まで）より後になっています。</div>');
+  $('occBtn').disabled = true;
+  out('<p class="empty">読み込んでいます…</p>');
+  try {
+    // 期間にかかる月をすべて読む
+    const months = [];
+    for (let d = parse(from.slice(0, 7) + '-01'); fmt(d) <= to; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push(fmt(d).slice(0, 7));
+    const byDate = {};
+    for (const mo of months) {
+      const r = await api('/api/edit/month?month=' + mo);
+      if (r.times) times = r.times;
+      r.days.forEach(x => { byDate[x.date] = x.day; });
+    }
+    const days = {};
+    let open = 0, closedN = 0;
+    for (let d = parse(from); fmt(d) <= to; d = addDays(d, 1)) {
+      const date = fmt(d);
+      const day = byDate[date] || { closed: false, cells: {} };
+      const u = dayUtilization(date, day);
+      const closed = d.getDay() === 0 || !!day.closed || u.cap <= 0;
+      const bookings = closed ? 0 : extractBookings(date, day).filter(b => b.color !== 'gray' && !b.excluded).length;
+      const availableMin = closed ? 0 : u.cap;
+      days[date] = { closed, availableMin, blockedMin: UTIL_OPEN - availableMin, occupiedMin: closed ? 0 : u.minutes, bookings };
+      if (closed) closedN++; else open++;
+    }
+    const data = {
+      app: 'yoyaku-chan-occupancy', version: 1, source: mode === 'sub' ? 'yoyaku-chan2' : 'yoyaku-chan',
+      exportedAt: localIso(new Date()),
+      baseHours: { start: '10:00', end: '22:00', breakMin: UTIL_BREAK },
+      from, to, days,
+    };
+    const name = (mode === 'sub' ? 'yoyaku-chan2' : 'yoyaku-chan') + '_occupancy_' + from.replace(/-/g, '') + '-' + to.replace(/-/g, '') + '.json';
+    downloadBlob(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }), name);
+    const n = Object.keys(days).length;
+    out('<div class="result-box" style="margin-top:12px">' + n + '日分を保存しました（営業日' + open + '日・休み' + closedN + '日）\n' + esc(name) + '</div>');
+  } catch (err) { out('<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'); }
+  finally { $('occBtn').disabled = false; }
 }
 async function renderUtil() {
   const month = $('utilMonth').value; if (!month) return;
