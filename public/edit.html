@@ -309,6 +309,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c;
           <button type="button" id="restoreBtn">バックアップから復元</button>
           <button type="button" data-page="import">スプレッドシートから取り込み</button>
           <button type="button" data-page="kaikei">会計くんから取り込み</button>
+          <button type="button" data-page="clear">予約データを消す</button>
           <hr>
           <button type="button" data-page="password" data-main-only>パスワード変更</button>
           <button type="button" id="subResetBtn" data-sub-only hidden>データをすべて消す</button>
@@ -1231,7 +1232,7 @@ $('csvBtn').addEventListener('click', () => {
 });
 
 /* ---------- メニューの各ページ ---------- */
-const PAGE_TITLES = { password: 'パスワード変更', import: 'スプレッドシートから取り込み', settings: '設定（予約の長さ）', stats: 'キャンセル統計', util: '稼働率', fixed: '固定予約・週のコピー', kaikei: '会計くんから取り込み', patient: '患者さんが見るページ（○×表）' };
+const PAGE_TITLES = { password: 'パスワード変更', import: 'スプレッドシートから取り込み', settings: '設定（予約の長さ）', stats: 'キャンセル統計', util: '稼働率', fixed: '固定予約・週のコピー', kaikei: '会計くんから取り込み', patient: '患者さんが見るページ（○×表）', clear: '予約データを消す' };
 const LENGTH_CHOICES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 150, 180, 'all'];
 const lenText = v => v === 'all' ? '当日全て' : v + '分';
 const pageBody = () => $('pageBody');
@@ -1240,7 +1241,7 @@ function openPage(name) {
   $('pageTitle').textContent = PAGE_TITLES[name];
   pageBody().innerHTML = '<p class="empty">読み込み中…</p>';
   $('pageView').classList.remove('hidden');
-  ({ password: pagePassword, import: pageImport, settings: pageSettings, stats: pageStats, util: pageUtil, fixed: pageFixed, kaikei: pageKaikei, patient: pagePatient })[name]().catch(err => { pageBody().innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; });
+  ({ password: pagePassword, import: pageImport, settings: pageSettings, stats: pageStats, util: pageUtil, fixed: pageFixed, kaikei: pageKaikei, patient: pagePatient, clear: pageClear })[name]().catch(err => { pageBody().innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; });
 }
 document.querySelectorAll('[data-page]').forEach(b => b.addEventListener('click', () => openPage(b.dataset.page)));
 $('pageClose').addEventListener('click', () => { $('pageView').classList.add('hidden'); loadWeek().catch(() => {}); });
@@ -1391,6 +1392,58 @@ async function pageImport() {
       toast(r.restoredDays + '日分を取り込みました');
       loadWeek().catch(() => {});
     } catch (err) { $('csvOut').innerHTML = '<div class="warn" style="margin-top:12px">取り込めませんでした：' + esc(err.message) + '</div>'; b.disabled = false; }
+  });
+}
+
+/* ---------- 予約データを消す（範囲指定・全部） ---------- */
+async function pageClear() {
+  const today = fmt(new Date());
+  pageBody().innerHTML =
+    '<div class="pg-card"><div class="warn" style="margin:0 0 10px">消した予約は元に戻せません。先にバックアップを保存してください（バックアップから復元すれば戻せます）。</div>' +
+    '<div class="actions"><button class="btn" type="button" id="clrBackup">バックアップを保存（JSON）</button></div></div>' +
+    '<div class="pg-card"><h3>範囲を指定して消す</h3>' +
+    '<div class="pg-row"><label>開始日<input type="date" id="clrFrom" value="' + today.slice(0, 7) + '-01"></label><label>終了日<input type="date" id="clrTo" value="' + today + '"></label></div>' +
+    '<label class="ex-check" style="margin-top:10px"><input type="checkbox" id="clrCancelR" checked> この期間のキャンセル記録も消す</label>' +
+    '<div class="actions"><button class="btn" type="button" id="clrCheckR">1. 件数を確認</button><button class="btn danger" type="button" id="clrRunR" disabled>2. この範囲を消す</button></div>' +
+    '<div id="clrOutR"></div></div>' +
+    '<div class="pg-card"><h3>すべて消す</h3>' +
+    '<p class="sub">全期間の予約・休診日を消します。無期限の週のコピーも止めます（止めないと先の週にまた自動で入るため）。設定・固定予約の登録・パスワードは残ります。</p>' +
+    '<label class="ex-check"><input type="checkbox" id="clrCancelA" checked> キャンセル記録もすべて消す</label>' +
+    '<div class="pg-row"><label>確認のため「すべて削除」と入力<input type="text" id="clrWord" class="text-input" autocomplete="off" placeholder="すべて削除"></label></div>' +
+    '<div class="actions" style="margin-top:10px"><button class="btn danger" type="button" id="clrRunA" disabled>すべて消す</button></div>' +
+    '<div id="clrOutA"></div></div>';
+  $('clrBackup').addEventListener('click', () => $('exportBtn').click());
+  const box = (id, html) => { $(id).innerHTML = html; };
+  const rangeBody = () => ({ from: $('clrFrom').value, to: $('clrTo').value, cancels: $('clrCancelR').checked });
+  ['clrFrom', 'clrTo', 'clrCancelR'].forEach(id => $(id).addEventListener('change', () => { $('clrRunR').disabled = true; box('clrOutR', ''); }));
+  $('clrCheckR').addEventListener('click', async () => {
+    try {
+      const r = await api('/api/edit/clear', { method: 'POST', body: Object.assign(rangeBody(), { dryRun: true }) });
+      box('clrOutR', '<div class="result-box" style="margin-top:12px">【確認】まだ消していません\n' + label($('clrFrom').value) + ' 〜 ' + label($('clrTo').value) +
+        '\n予約・休診の入っている日：' + r.days + '日' + ($('clrCancelR').checked ? '\nキャンセル記録：' + r.cancels + '件' : '') + '</div>');
+      $('clrRunR').disabled = !(r.days || r.cancels);
+    } catch (err) { box('clrOutR', '<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'); }
+  });
+  $('clrRunR').addEventListener('click', async () => {
+    if (!(await askConfirm(label($('clrFrom').value) + ' 〜 ' + label($('clrTo').value) + ' の予約を消します。元に戻せません。', '消す'))) return;
+    $('clrRunR').disabled = true;
+    try {
+      const r = await api('/api/edit/clear', { method: 'POST', body: rangeBody() });
+      box('clrOutR', '<div class="result-box" style="margin-top:12px">【完了】' + r.days + '日分を消しました' + ($('clrCancelR').checked ? '（キャンセル記録 ' + r.cancels + '件）' : '') + '</div>');
+      toast('消しました');
+    } catch (err) { box('clrOutR', '<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'); }
+  });
+  $('clrWord').addEventListener('input', () => { $('clrRunA').disabled = $('clrWord').value.trim() !== 'すべて削除'; });
+  $('clrRunA').addEventListener('click', async () => {
+    try {
+      const pre = await api('/api/edit/clear', { method: 'POST', body: { all: true, cancels: $('clrCancelA').checked, dryRun: true } });
+      if (!(await askConfirm('全期間の予約 ' + pre.days + '日分' + ($('clrCancelA').checked ? '・キャンセル記録 ' + pre.cancels + '件' : '') + (pre.copies ? '・無期限コピー ' + pre.copies + '件' : '') + ' を消します。元に戻せません。', 'すべて消す'))) return;
+      $('clrRunA').disabled = true;
+      const r = await api('/api/edit/clear', { method: 'POST', body: { all: true, cancels: $('clrCancelA').checked } });
+      $('clrWord').value = '';
+      box('clrOutA', '<div class="result-box" style="margin-top:12px">【完了】' + r.days + '日分を消しました' + ($('clrCancelA').checked ? '（キャンセル記録 ' + r.cancels + '件）' : '') + (r.copies ? '\n無期限の週のコピー ' + r.copies + '件を止めました' : '') + '</div>');
+      toast('すべて消しました');
+    } catch (err) { box('clrOutA', '<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'); }
   });
 }
 

@@ -308,4 +308,19 @@ assert.ok(!r.body.day.cells['13:00'].x); // チェックを外すと解除
   assert.ok(!('x' in normalizeDay({ cells: { '10:00': { c: 'pink', n: 'a', x: 'yes' } } }).cells['10:00']));
 }
 
+// 21) 予約データを消す：範囲指定（確認だけ→実行）と全部
+await call('POST', '/api/edit/cells', { date: '2026-12-21', times: T('10:00', 60), color: 'pink', name: '消す人' }, token2);
+await call('POST', '/api/edit/cells', { date: '2026-12-22', times: T('10:00', 60), color: 'pink', name: '残る人' }, token2);
+r = await call('POST', '/api/edit/clear', { from: '2026-12-21', to: '2026-12-21', dryRun: true }, token2);
+assert.equal(r.body.days, 1);
+assert.equal((await call('GET', '/api/edit/week?start=2026-12-21', null, token2)).body.days[0].day.cells['10:00'].n, '消す人'); // 確認だけでは消えない
+r = await call('POST', '/api/edit/clear', { from: '2026-12-21', to: '2026-12-21' }, token2);
+const wkClr = (await call('GET', '/api/edit/week?start=2026-12-21', null, token2)).body.days;
+assert.ok(!wkClr[0].day.cells["10:00"] && wkClr[1].day.cells['10:00'].n === '残る人');
+assert.equal((await call('POST', '/api/edit/clear', { from: '2026-12-22', to: '2026-12-21' }, token2)).status, 400);
+r = await call('POST', '/api/edit/clear', { all: true, cancels: true }, token2);
+assert.ok(r.body.days > 0);
+assert.equal(Object.keys((await call('GET', '/api/edit/export', null, token2)).body.days).length, 0);
+assert.equal((await call('POST', '/api/edit/clear', { all: true, cancels: true }, null)).status, 401);
+
 console.log('ALL TESTS PASSED');

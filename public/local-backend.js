@@ -249,6 +249,20 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
       return reply({ ok: true, result: res });
     }
     extendCopies = () => { const h = horizon(); (meta.copies || []).forEach(r => { if (r.weeks === null && r.filledUntil < addD(h, -7)) fill(r, h, { placed: 0, existing: 0, skipped: [] }); }); save(); };
+    if (url.pathname === '/api/edit/clear') {
+      const all = body.all === true;
+      if (!all && !(body.from && body.to && body.from <= body.to)) return reply({ ok: false, error: '開始日と終了日を正しく選んでください。' }, 400);
+      const inRange = d => all || (d >= body.from && d <= body.to);
+      const ds = Object.keys(store).filter(d => d !== '__meta' && inRange(d) && (store[d].closed || Object.keys(store[d].cells || {}).length));
+      const cl = body.cancels === true ? (meta.cancels || []).filter(c => inRange(c.date)).length : 0;
+      const res = { ok: true, days: ds.length, cancels: cl, copies: all ? (meta.copies || []).length : 0 };
+      if (body.dryRun === true) return reply(res);
+      Object.keys(store).filter(d => d !== '__meta' && inRange(d)).forEach(d => delete store[d]);
+      if (body.cancels === true) meta.cancels = (meta.cancels || []).filter(c => !inRange(c.date));
+      if (all) meta.copies = [];
+      save();
+      return reply(res);
+    }
     if (url.pathname === '/api/edit/copies') {
       return reply({ ok: true, copies: meta.copies.map(r => ({ id: r.id, source: r.source, target: r.target, weeks: r.weeks, filledUntil: r.filledUntil, count: r.template.reduce((a, d) => a + d.length, 0) })) });
     }
