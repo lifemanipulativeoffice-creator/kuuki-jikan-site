@@ -137,9 +137,9 @@ body.copy-mode .grid td { cursor: cell; }
 .grid td.cont { color: transparent; }
 /* PC：1か月表（日付が縦・時間が横。画面の高さに合わせて行の高さを自動で決める） */
 table.grid.month { min-width: 900px; --rowh: 22px; --fs: 11px; }
-.grid.month thead th { height: 20px; font-size: 10px; text-align: left; padding-left: 3px; cursor: default; border-left: 1px solid #c97f72; }
-.grid.month thead th.dcol { width: 84px; text-align: center; padding: 0; border-left: 0; }
-.grid.month tbody th { width: 84px; height: var(--rowh); line-height: 1; font-size: calc(var(--fs) + 1px); text-align: left; padding: 0 0 0 6px; cursor: pointer; color: #5b4032; white-space: nowrap; }
+.grid.month thead th { height: 22px; font-size: 12px; text-align: left; padding-left: 3px; cursor: default; border-left: 1px solid #c97f72; }
+.grid.month thead th.dcol { width: 96px; text-align: center; padding: 0; border-left: 0; }
+.grid.month tbody th { width: 96px; height: var(--rowh); line-height: 1; font-size: calc(var(--fs) + 1px); text-align: left; padding: 0 0 0 6px; cursor: pointer; color: #5b4032; white-space: nowrap; }
 .grid.month td { height: var(--rowh); font-size: var(--fs); padding: 0 3px; line-height: 1; border-right: 1px solid #f1e8df; border-bottom: 1px solid #e3d6ca; text-overflow: ellipsis; }
 .grid.month td.h { border-left: 1px solid #cdb6a5; }
 .grid.month td.out { background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(157,87,76,.06) 5px 7px); }
@@ -579,7 +579,7 @@ function renderMonth() {
   const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
   const table = $('gridTable');
   const cg = document.createElement('colgroup');
-  cg.innerHTML = '<col style="width:84px">' + times.map(() => '<col>').join('');
+  cg.innerHTML = '<col style="width:96px">' + times.map(() => '<col>').join('');
   table.prepend(cg);
   const head = $('gridHead');
   head.innerHTML = '<th class="dcol">日付</th>';
@@ -634,9 +634,9 @@ function fitMonth() {
   const table = $('gridTable');
   if (!table.classList.contains('month')) return;
   const avail = $('gridWrap').clientHeight - $('gridHead').offsetHeight - 2;
-  const rowH = Math.max(12, Math.min(34, Math.floor(avail / Math.max(1, days.length))));
+  const rowH = Math.max(14, Math.min(40, Math.floor(avail / Math.max(1, days.length))));
   table.style.setProperty('--rowh', rowH + 'px');
-  table.style.setProperty('--fs', Math.max(9, Math.min(13, rowH - 6)) + 'px');
+  table.style.setProperty('--fs', Math.max(10, Math.min(16, rowH - 6)) + 'px');
 }
 window.addEventListener('resize', () => fitMonth());
 
@@ -1049,10 +1049,8 @@ async function loadWeek(scrollToBusiness) {
   document.body.classList.toggle('multi', shownWeeks === 2);
   let nDays = shownWeeks * 7;
   if (shownWeeks === 4) {
-    // PC：今週の月曜から5週間。表示中の月（土曜の月）の末日までは必ず入れる
-    const sat = addDays(weekStart, 5);
-    const monthEnd = new Date(sat.getFullYear(), sat.getMonth() + 1, 0);
-    nDays = Math.min(42, Math.max(35, Math.round((monthEnd - weekStart) / 86400000) + 1));
+    // PC：今週の月曜から4週間（1画面に収めて文字を大きく）
+    nDays = 28;
   }
   const r = await api('/api/edit/week?start=' + fmt(weekStart) + '&days=' + nDays);
   times = r.times; days = r.days;
