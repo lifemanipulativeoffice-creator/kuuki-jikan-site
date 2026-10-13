@@ -463,8 +463,8 @@ const COLOR_LIST = [
   { key: null,    label: 'なし',   sub: '空き' },
   { key: 'pink',  label: 'ピンク', sub: '埋まり' },
   { key: 'blue',  label: '青',     sub: '埋まり' },
-  { key: 'red',   label: '赤',     sub: '施術外業務', legend: '赤＝施術外業務（統計外）' },
-  { key: 'gray',  label: 'グレー', sub: '定休・休診', legend: 'グレー＝定休日・休診日' },
+  { key: 'red',   label: '赤',     sub: '埋まり' },
+  { key: 'gray',  label: 'グレー', sub: '埋まり' },
 ];
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 const TOKEN_KEYS = { main: 'yoyaku_chan_token', sub: 'yoyaku_chan2_token' };
@@ -570,7 +570,7 @@ async function doLogin() {
 /* ---------- 表の描画 ---------- */
 function renderLegend() {
   $('legend').innerHTML = COLOR_LIST.filter(c => c.key).map(c =>
-    '<span><i class="c-' + c.key + '"></i>' + (c.legend || c.label) + '</span>').join('') + '<span><i class="ex-i"></i>斜線＝統計から除外</span>';
+    '<span><i class="c-' + c.key + '"></i>' + c.label + '</span>').join('') + '<span><i class="ex-i"></i>斜線＝統計から除外</span>';
 }
 
 function render() {
