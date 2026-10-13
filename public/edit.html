@@ -119,6 +119,12 @@ table.grid { border-collapse: separate; border-spacing: 0; width: 100%; min-widt
 .legend .ex-i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; background: #9d574c repeating-linear-gradient(135deg, rgba(255,255,255,.6) 0 2px, transparent 2px 5px); }
 .ex-check { display: flex; align-items: center; gap: 8px; margin: 2px 0 12px; font-size: 14px; font-weight: 700; cursor: pointer; }
 .ex-check input { width: 20px; height: 20px; }
+/* 右クリックメニュー */
+.ctx-menu { position: fixed; z-index: 60; min-width: 190px; background: #fff; border: 1px solid #d5c1ae; border-radius: 10px; box-shadow: 0 8px 24px rgba(91,64,50,.22); padding: 5px; }
+.ctx-menu button { display: flex; justify-content: space-between; gap: 16px; width: 100%; border: 0; background: none; text-align: left; padding: 8px 10px; border-radius: 7px; font: inherit; font-size: 13px; color: #5b4032; cursor: pointer; }
+.ctx-menu button:hover { background: #f5eee5; }
+.ctx-menu button small { color: #a08a7b; }
+.ctx-menu hr { border: 0; border-top: 1px solid #eadfd5; margin: 4px 2px; }
 /* 範囲コピー */
 .copy-bar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 45; display: flex; align-items: center; gap: 10px; background: #5b4032; color: #fff; padding: 8px 10px 8px 16px; border-radius: 24px; box-shadow: 0 6px 18px rgba(0,0,0,.25); font-size: 13px; font-weight: 700; max-width: 94vw; }
 .copy-bar .btn { min-height: 32px; padding: 4px 12px; color: #5b4032; background: #fff; }
@@ -430,6 +436,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c;
     <div class="actions"><button class="btn" type="button" id="confirmNo">やめる</button><button class="btn primary" type="button" id="confirmYes">OK</button></div>
   </div>
 </div>
+<div id="ctxMenu" class="ctx-menu hidden" role="menu"></div>
 <div id="copyBar" class="copy-bar hidden"><span id="copyBarText"></span><span id="copyBarBtns" class="copy-bar-btns"></span></div>
 <div id="pasteModal" class="overlay hidden" role="dialog" aria-modal="true">
   <div class="sheet">
@@ -781,7 +788,7 @@ function selectionBookings() {
   return { r, list: out };
 }
 function clearSelection() { selection = null; paintSelection(); updateBar(); }
-function setSelection(s) { selection = s; paintSelection(); updateBar(); }
+function setSelection(s) { selection = s; if (s && pasteMode) { pasteMode = false; clearGhost(); } paintSelection(); updateBar(); } // 新しく選んだら貼り付け待ちは終える（コピー内容は右クリックで貼れる）
 
 /* ---- 下のバー（いま何ができるか） ---- */
 function updateBar() {
@@ -839,7 +846,7 @@ function doCopy() {
   updateBar();
   toast(clip.items.length + '件をコピーしました');
 }
-function endPaste() { pasteMode = false; clearGhost(); updateBar(); }
+function endPaste() { pasteMode = false; clip = null; clearGhost(); updateBar(); }
 
 // 貼り付け先（左上）から、各予約の行き先を計算
 function pasteTargets(date, time) {
@@ -930,7 +937,7 @@ function dragTdAt(x, y) {
   return td && td.dataset.date ? td : null;
 }
 $('gridBody').addEventListener('pointerdown', e => {
-  if (e.button > 0 || pasteMode) return;
+  if (e.button > 0) return;
   const td = e.target.closest('td');
   if (!td || !td.dataset.date) return;
   const day = dragDay(td.dataset.date);
@@ -939,7 +946,7 @@ $('gridBody').addEventListener('pointerdown', e => {
   // Shift＋クリック：選択中なら範囲を広げる
   if (e.shiftKey && selection) { setSelection({ a: selection.a, b: { date: td.dataset.date, time: td.dataset.time } }); dragState.suppressClick = true; return; }
   const touch = e.pointerType !== 'mouse';
-  dragState.pending = { date: td.dataset.date, time: td.dataset.time, x: e.clientX, y: e.clientY, touch, select: copyMode || booked || e.shiftKey };
+  dragState.pending = { date: td.dataset.date, time: td.dataset.time, x: e.clientX, y: e.clientY, touch, select: copyMode || pasteMode || booked || e.shiftKey };
   clearTimeout(dragState.timer);
   if (touch) dragState.timer = setTimeout(() => { if (dragState.pending) dragStart(dragState.pending); }, 400);
 });
@@ -974,7 +981,55 @@ document.addEventListener('pointermove', e => {
 });
 // 長押しで選び始めたら画面がスクロールしないようにする
 document.addEventListener('touchmove', e => { if (dragState.active) e.preventDefault(); }, { passive: false });
-$('gridBody').addEventListener('contextmenu', e => { if (dragState.pending || dragState.active) e.preventDefault(); });
+$('gridBody').addEventListener('contextmenu', e => {
+  if (dragState.pending || dragState.active) { e.preventDefault(); return; }
+  const td = e.target.closest('td');
+  if (!td || !td.dataset.date) return;
+  e.preventDefault();
+  openCtxMenu(td, e.clientX, e.clientY);
+});
+
+/* ---- 右クリックメニュー（PC） ---- */
+function closeCtxMenu() { $('ctxMenu').classList.add('hidden'); }
+function inSelection(date, time) {
+  if (!selection) return false;
+  const r = selRect(selection);
+  return date >= r.from && date <= r.to && time >= r.t0 && time <= r.t1;
+}
+function openCtxMenu(td, x, y) {
+  const date = td.dataset.date, time = td.dataset.time;
+  const day = dragDay(date), booked = day && isBlocking(day.cells[time]);
+  const items = [];
+  if (inSelection(date, time)) items.push(['copy', 'コピー', 'Ctrl+C']);
+  else if (booked) items.push(['copy-one', 'この予約をコピー', '']);
+  if (clip) items.push(['paste', 'ここに貼り付け', 'Ctrl+V'], ['repeat', 'くり返し貼り付け…', '']);
+  if (lastPaste) items.push(['undo', '元に戻す（直前の貼り付け）', 'Ctrl+Z']);
+  if (items.length) items.push(['-']);
+  items.push(['open', booked ? '予約を開く（編集）' : 'ここに予約を入れる', '']);
+  if (selection) items.push(['clear', '選択を解除', 'Esc']);
+  if (clip) items.push(['end', 'コピーを終了', 'Esc']);
+  const m = $('ctxMenu');
+  m.innerHTML = items.map(it => it[0] === '-' ? '<hr>' : '<button type="button" data-ctx="' + it[0] + '">' + it[1] + (it[2] ? '<small>' + it[2] + '</small>' : '') + '</button>').join('');
+  m.classList.remove('hidden');
+  m.style.left = Math.min(x, window.innerWidth - m.offsetWidth - 6) + 'px';
+  m.style.top = Math.min(y, window.innerHeight - m.offsetHeight - 6) + 'px';
+  m.onclick = ev => {
+    const b = ev.target.closest('[data-ctx]'); if (!b) return;
+    closeCtxMenu();
+    const act = b.dataset.ctx;
+    if (act === 'copy') doCopy();
+    else if (act === 'copy-one') { const bk = findBooking(day, time); setSelection({ a: { date, time: bk.start }, b: { date, time: bk.start } }); doCopy(); }
+    else if (act === 'paste') { if (!pasteMode) { pasteMode = true; updateBar(); } pasteAt(date, time); }
+    else if (act === 'repeat') openPaste();
+    else if (act === 'undo') undoPaste();
+    else if (act === 'open') { if (selection) clearSelection(); openCell(date, time); }
+    else if (act === 'clear') clearSelection();
+    else if (act === 'end') endPaste();
+  };
+}
+document.addEventListener('pointerdown', e => { if (!e.target.closest('#ctxMenu')) closeCtxMenu(); }, true);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCtxMenu(); });
+window.addEventListener('scroll', closeCtxMenu, true);
 function dragEnd(cancel) {
   clearTimeout(dragState.timer);
   dragState.pending = null;
