@@ -919,7 +919,7 @@ function dragStart(p) {
     dragState.active = { select: true };
     setSelection({ a: { date: p.date, time: p.time }, b: { date: p.date, time: p.time } });
   } else {
-    dragState.active = { date: p.date, time: p.time, range: { start: p.time, minutes: 10 } };
+    dragState.active = { date: p.date, time: p.time, range: { start: p.time, minutes: 10 }, fromEmpty: true, mode: 'new' };
     dragPaint(dragState.active);
   }
   if (p.touch && navigator.vibrate) try { navigator.vibrate(15); } catch {}
@@ -955,14 +955,17 @@ document.addEventListener('pointermove', e => {
   if (!a) return;
   const td = dragTdAt(e.clientX, e.clientY);
   if (!td) return;
-  if (!a.select && td.dataset.date !== a.date) {
-    // 空き枠から別の日へなぞった → 範囲選択に切り替え
-    dragClear();
-    dragState.active = { select: true };
-    setSelection({ a: { date: a.date, time: a.time }, b: { date: td.dataset.date, time: td.dataset.time } });
-    return;
+  if (a.fromEmpty) {
+    // 空き枠から始めたとき：別の日に出たら範囲選択、元の日の列（行）に戻ったら予定記入に戻す
+    if (td.dataset.date !== a.date) {
+      if (a.mode !== 'select') { dragClear(); a.mode = 'select'; }
+      const b = { date: td.dataset.date, time: td.dataset.time };
+      if (!selection || selection.b.date !== b.date || selection.b.time !== b.time) setSelection({ a: { date: a.date, time: a.time }, b });
+      return;
+    }
+    if (a.mode === 'select') { a.mode = 'new'; selection = null; paintSelection(); updateBar(); a.range = { start: a.time, minutes: 10 }; dragPaint(a); }
   }
-  if (dragState.active.select) {
+  if (a.select) {
     if (td.dataset.date !== selection.b.date || td.dataset.time !== selection.b.time) { selection.b = { date: td.dataset.date, time: td.dataset.time }; paintSelection(); }
     return;
   }
@@ -981,7 +984,7 @@ function dragEnd(cancel) {
   dragClear();
   dragState.suppressClick = true;
   setTimeout(() => { dragState.suppressClick = false; }, 400);
-  if (a.select) { if (cancel) clearSelection(); else updateBar(); return; }
+  if (a.select || a.mode === 'select') { if (cancel) clearSelection(); else updateBar(); return; }
   if (!cancel) openCell(a.date, a.range.start, a.range.minutes > 10 ? a.range.minutes : 0); // 1マスだけなら通常の長さ
 }
 document.addEventListener('pointerup', () => dragEnd(false));
