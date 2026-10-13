@@ -463,8 +463,8 @@ const COLOR_LIST = [
   { key: null,    label: 'なし',   sub: '空き' },
   { key: 'pink',  label: 'ピンク', sub: '埋まり' },
   { key: 'blue',  label: '青',     sub: '埋まり' },
-  { key: 'red',   label: '赤',     sub: '埋まり' },
-  { key: 'gray',  label: 'グレー', sub: '埋まり' },
+  { key: 'red',   label: '赤',     sub: '施術外業務', legend: '赤＝施術外業務（統計外）' },
+  { key: 'gray',  label: 'グレー', sub: '定休・休診', legend: 'グレー＝定休日・休診日' },
 ];
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 const TOKEN_KEYS = { main: 'yoyaku_chan_token', sub: 'yoyaku_chan2_token' };
@@ -570,7 +570,7 @@ async function doLogin() {
 /* ---------- 表の描画 ---------- */
 function renderLegend() {
   $('legend').innerHTML = COLOR_LIST.filter(c => c.key).map(c =>
-    '<span><i class="c-' + c.key + '"></i>' + c.label + '</span>').join('') + '<span><i class="ex-i"></i>斜線＝統計から除外</span>';
+    '<span><i class="c-' + c.key + '"></i>' + (c.legend || c.label) + '</span>').join('') + '<span><i class="ex-i"></i>斜線＝統計から除外</span>';
 }
 
 function render() {
@@ -1302,7 +1302,7 @@ function openCell(date, time, presetLen) {
   sel.value = String(isAllDay ? 'all' : ownLen || dragLen || settings.defaultLength);
   $('existingActions').classList.toggle('hidden', !cell);
   $('excludeCheck').checked = !!(cell && cell.x);
-  $('cancelBtn').classList.toggle('hidden', !!(cell && cell.x)); // 休憩などはキャンセル統計に入れない
+  $('cancelBtn').classList.toggle('hidden', !!(cell && (cell.x || cell.c === 'red' || cell.c === 'gray'))); // 施術外業務・休みはキャンセル統計に入れない // 休憩などはキャンセル統計に入れない
   current.series = cell && cell.s ? cell.s : '';
   $('seriesBox').classList.toggle('hidden', !current.series);
   if (current.series) $('seriesText').textContent = '↻ この予約は' + (current.series.startsWith('f:') ? '固定予約' : '週のコピー') + 'で入ったものです。今日（' + label(fmt(new Date())) + '）を含めて、これから先の同じ繰り返し予約をまとめて消せます。過去の分は残ります。';
@@ -1465,7 +1465,7 @@ function extractBookings(date, day) {
     const cont = cur && c && c.c && c.c === cur.color && !c.n && !c.x && toMin(t) === toMin(cur.end);
     if (cont) { cur.end = toTime(toMin(t) + 10); return; }
     if (cur) { out.push(cur); cur = null; }
-    if (c && !(c.c === 'light' && !c.n)) cur = { date, start: t, end: toTime(toMin(t) + 10), color: c.c || '', name: c.n || '', excluded: !!c.x };
+    if (c && !(c.c === 'light' && !c.n)) cur = { date, start: t, end: toTime(toMin(t) + 10), color: c.c || '', name: c.n || '', excluded: !!c.x || c.c === 'red' }; // 赤＝施術外業務は統計から除外
   });
   if (cur) out.push(cur);
   out.forEach(b => { b.minutes = toMin(b.end) - toMin(b.start); });
@@ -1551,7 +1551,7 @@ async function loadReport() {
     });
     reportData = { month, bookings, openDays, monthDays: r.days };
     $('reportPages').innerHTML = buildReportHtml();
-    $('reportNote').textContent = 'A4横1枚（予約表と同じ並び）。グレーの枠（休み・研修など）と「統計から除外」にした予約は表に載せ、予約件数には数えていません。';
+    $('reportNote').textContent = 'A4横1枚（予約表と同じ並び）。グレー（定休日・休診日）・赤（施術外業務）・「統計から除外」の枠は表に載せ、予約件数には数えていません。';
   } catch (err) { $('reportPages').innerHTML = ''; toast(err.message, true); }
 }
 
@@ -2275,7 +2275,7 @@ async function renderStats() {
 // ・10:00より前・22:00以降（22時台の予約）の分も足す（ただし上限は11時間）
 // ・1日の稼働率 ＝ 埋まった時間 ÷ 稼働できる時間（12時間 − 休憩1時間 − グレー・統計除外の時間）
 // ・月の稼働率 ＝ 各日の稼働率の平均（定休日・休診日は除く。「0%の日を除く」なら0%の日も除く）
-// ・グレー（休み・研修など）と「統計から除外」にした予約は数えない
+// ・グレー（定休日・休診日）・赤（施術外業務）・「統計から除外」は数えない
 const UTIL_OPEN = 12 * 60;   // 営業 10:00〜22:00
 const UTIL_BREAK = 60;       // 毎日の休憩（稼働できる時間から引く）
 const UTIL_CAP = UTIL_OPEN - UTIL_BREAK;
@@ -2301,7 +2301,7 @@ let utilExcludeZero = false;
 async function pageUtil() {
   pageBody().innerHTML = '<div class="pg-card">' + monthPicker('utilMonth', renderUtil) +
     '<label class="toggle-row" style="margin-top:10px"><span>0%の日を除いて平均する</span><input type="checkbox" id="utilZero"' + (utilExcludeZero ? ' checked' : '') + '></label>' +
-    '<p class="sub" style="margin:10px 0 0">会計くんと同じ計算です。予約1件は30分単位に切り上げ、人が重なった時間は1回だけ数えます。1日の稼働率＝埋まった時間÷稼働できる時間。稼働できる時間＝営業10:00〜22:00の12時間 − 毎日の休憩1時間 − その日のグレー・「統計から除外」の時間（例：打ち合わせ1時間なら10時間）。時間外の施術も足し、上限は稼働できる時間まで。月の稼働率＝各日の稼働率の平均（日曜・休診日・1日まるごとグレーの日は除く）。※毎日の休憩1時間は自動で引くので、予約表に入れると二重に引かれます。</p></div>' +
+    '<p class="sub" style="margin:10px 0 0">会計くんと同じ計算です。予約1件は30分単位に切り上げ、人が重なった時間は1回だけ数えます。1日の稼働率＝埋まった時間÷稼働できる時間。稼働できる時間＝営業10:00〜22:00の12時間 − 毎日の休憩1時間 − その日のグレー（定休日・休診日）・赤（施術外業務）・「統計から除外」の時間（例：施術外業務1時間なら10時間）。時間外の施術も足し、上限は稼働できる時間まで。月の稼働率＝各日の稼働率の平均（日曜・休診日・1日まるごとグレーの日は除く）。※毎日の休憩1時間は自動で引くので、予約表に入れると二重に引かれます。</p></div>' +
     '<div id="utilOut" class="pg"></div>' +
     '<div class="pg-card"><h3>会計くん用 稼働率データ（JSON）</h3>' +
     '<p class="sub">会計くんの「予約ちゃんのデータで修正」で読み込むファイルです。休憩・グレー・「統計から除外」を引いた稼働できる時間が入るので、会計くんの稼働率も予約ちゃんと同じになります。未来の日は入れません。</p>' +

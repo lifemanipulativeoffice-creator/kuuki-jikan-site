@@ -358,4 +358,14 @@ r = await call('POST', '/api/edit/paste', { items: [{ date: '2027-01-05', start:
 assert.equal(r.body.result.overwritten.length, 1);
 assert.equal((await call('POST', '/api/edit/paste', { items: [{ date: '2027-01-05', start: '23:00', minutes: 30, color: 'blue' }] }, token2)).status, 400);
 
+// 24) 赤（施術外業務）は患者向けでは×、前後に接する枠は要相談（予約と同じルール）
+{
+  const { publicDay } = await import('../lib/core.mjs');
+  const cells = {}; ['14:00', '14:10', '14:20', '14:30', '14:40', '14:50'].forEach((t, i) => { cells[t] = i ? { c: 'red' } : { c: 'red', n: '業務' }; });
+  const st = Object.fromEntries(publicDay('2026-10-14', { cells }, '2026-10-12').slots.map(x => [x.time, x.status]));
+  assert.equal(st['14:00'], 'full'); assert.equal(st['13:30'], 'full');
+  assert.equal(st['13:00'], 'consult'); assert.equal(st['15:00'], 'consult');
+  assert.equal(st['12:30'], 'available'); assert.equal(st['15:30'], 'available');
+}
+
 console.log('ALL TESTS PASSED');
