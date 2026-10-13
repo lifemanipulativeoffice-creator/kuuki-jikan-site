@@ -795,8 +795,8 @@ function updateBar() {
   const bar = $('copyBar'), txt = $('copyBarText'), btns = $('copyBarBtns');
   const touch = window.matchMedia('(pointer: coarse)').matches;
   let html = '';
-  if (pasteMode && clip) {
-    txt.textContent = '📋 ' + clip.items.length + '件をコピー中：貼り付ける位置（左上）を' + (touch ? 'タップ' : 'クリック');
+  if (clip && !selection) {
+    txt.textContent = '📋 ' + clip.items.length + '件をコピー中：' + (pasteMode ? '貼り付ける位置（左上）をタップ' : '貼り付けたい位置で右クリック（Ctrl+V）');
     html = '<button class="btn" type="button" data-act="repeat">くり返し貼り付け…</button>' +
       (lastPaste ? '<button class="btn" type="button" data-act="undo">元に戻す</button>' : '') +
       '<button class="btn" type="button" data-act="end">終了</button>';
@@ -842,7 +842,7 @@ function doCopy() {
   clipboard = { first: r.from, last: r.to, from: r.t0, to: r.t1, items: list.map(b => ({ date: b.date, start: b.start, minutes: b.minutes, color: b.color, name: b.name, x: b.excluded ? 1 : 0 })) };
   copyMode = false;
   selection = null; paintSelection();
-  pasteMode = true;
+  pasteMode = window.matchMedia('(pointer: coarse)').matches; // スマホ・タブレットはタップで貼る。PCは右クリック（または Ctrl+V）で貼る
   updateBar();
   toast(clip.items.length + '件をコピーしました');
 }
@@ -856,7 +856,7 @@ function pasteTargets(date, time) {
 function clearGhost() { document.querySelectorAll('#gridBody td.paste-ghost, #gridBody td.paste-ng').forEach(td => td.classList.remove('paste-ghost', 'paste-ng')); }
 function paintGhost(date, time) {
   clearGhost();
-  if (!pasteMode || !clip) return;
+  if (!clip) return;
   pasteTargets(date, time).forEach(t => {
     const day = dragDay(t.date);
     for (let m = t.startMin; m < t.startMin + t.minutes; m += 10) {
@@ -867,11 +867,11 @@ function paintGhost(date, time) {
   });
 }
 $('gridBody').addEventListener('pointerover', e => {
-  if (!pasteMode) return;
+  if (!clip) return;
   const td = e.target.closest('td');
   if (!td || !td.dataset.date) return;
-  hoverCell = { date: td.dataset.date, time: td.dataset.time };
-  paintGhost(hoverCell.date, hoverCell.time);
+  hoverCell = { date: td.dataset.date, time: td.dataset.time }; // Ctrl+V の貼り付け位置（青い枠は右クリックしたときだけ出す）
+  if (pasteMode) paintGhost(hoverCell.date, hoverCell.time);
 });
 $('gridBody').addEventListener('pointerleave', () => { if (pasteMode) clearGhost(); });
 
@@ -914,9 +914,9 @@ document.addEventListener('keydown', e => {
   if (/INPUT|SELECT|TEXTAREA/.test((document.activeElement || {}).tagName || '')) return;
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
   if (mod && k === 'c' && selection) { e.preventDefault(); doCopy(); }
-  else if (mod && k === 'v' && pasteMode && hoverCell) { e.preventDefault(); pasteAt(hoverCell.date, hoverCell.time); }
+  else if (mod && k === 'v' && clip && hoverCell) { e.preventDefault(); pasteAt(hoverCell.date, hoverCell.time); }
   else if (mod && k === 'z' && lastPaste) { e.preventDefault(); undoPaste(); }
-  else if (e.key === 'Escape') { if (pasteMode) endPaste(); else if (selection || copyMode) { copyMode = false; clearSelection(); } }
+  else if (e.key === 'Escape') { if (!$('ctxMenu').classList.contains('hidden')) return; if (clip && !selection) endPaste(); else if (selection || copyMode) { copyMode = false; clearSelection(); } }
 });
 
 /* ---- なぞる操作 ---- */
@@ -1023,7 +1023,7 @@ $('gridBody').addEventListener('contextmenu', e => {
 });
 
 /* ---- 右クリックメニュー（PC） ---- */
-function closeCtxMenu() { $('ctxMenu').classList.add('hidden'); }
+function closeCtxMenu() { $('ctxMenu').classList.add('hidden'); clearGhost(); }
 function inSelection(date, time) {
   if (!selection) return false;
   const r = selRect(selection);
@@ -1046,13 +1046,14 @@ function openCtxMenu(td, x, y) {
   m.classList.remove('hidden');
   m.style.left = Math.min(x, window.innerWidth - m.offsetWidth - 6) + 'px';
   m.style.top = Math.min(y, window.innerHeight - m.offsetHeight - 6) + 'px';
+  if (clip) paintGhost(date, time); // 右クリックした位置に貼ったときの行き先を青い枠で見せる（重なりは赤）
   m.onclick = ev => {
     const b = ev.target.closest('[data-ctx]'); if (!b) return;
     closeCtxMenu();
     const act = b.dataset.ctx;
     if (act === 'copy') doCopy();
     else if (act === 'copy-one') { const bk = findBooking(day, time); setSelection({ a: { date, time: bk.start }, b: { date, time: bk.start } }); doCopy(); }
-    else if (act === 'paste') { if (!pasteMode) { pasteMode = true; updateBar(); } pasteAt(date, time); }
+    else if (act === 'paste') pasteAt(date, time);
     else if (act === 'repeat') openPaste();
     else if (act === 'undo') undoPaste();
     else if (act === 'open') { if (selection) clearSelection(); openCell(date, time); }
