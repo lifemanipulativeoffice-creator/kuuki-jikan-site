@@ -374,7 +374,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c;
       <label for="lengthSelect">長さ</label>
       <select id="lengthSelect" class="text-input"></select>
     </div>
-    <label class="ex-check"><input type="checkbox" id="excludeCheck"> 統計から除外（休憩・打ち合わせなど）</label>
+    <label class="ex-check"><input type="checkbox" id="excludeCheck"> <span id="excludeText">統計から除外（休憩・打ち合わせなど）</span></label>
     <div id="overlapWarn" class="warn hidden"></div>
     <div id="existingActions">
       <div class="actions">
@@ -1201,7 +1201,7 @@ function renderSwatches() {
     b.className = 'swatch ' + (c.key ? 'c-' + c.key : 'none');
     b.innerHTML = c.label + '<small>' + c.sub + '</small>';
     b.setAttribute('aria-pressed', String(chosenColor === c.key));
-    b.addEventListener('click', () => { chosenColor = c.key; renderSwatches(); updateOverlapWarn(); });
+    b.addEventListener('click', () => { chosenColor = c.key; renderSwatches(); syncExclude(); updateOverlapWarn(); });
     $('swatches').appendChild(b);
   });
 }
@@ -1302,6 +1302,8 @@ function openCell(date, time, presetLen) {
   sel.value = String(isAllDay ? 'all' : ownLen || dragLen || settings.defaultLength);
   $('existingActions').classList.toggle('hidden', !cell);
   $('excludeCheck').checked = !!(cell && cell.x);
+  manualExclude = $('excludeCheck').checked;
+  syncExclude();
   $('cancelBtn').classList.toggle('hidden', !!(cell && (cell.x || cell.c === 'red' || cell.c === 'gray'))); // 施術外業務・休みはキャンセル統計に入れない // 休憩などはキャンセル統計に入れない
   current.series = cell && cell.s ? cell.s : '';
   $('seriesBox').classList.toggle('hidden', !current.series);
@@ -1315,11 +1317,21 @@ function openCell(date, time, presetLen) {
 $('lengthSelect').addEventListener('change', updateOverlapWarn);
 $('nameInput').addEventListener('input', updateOverlapWarn);
 
+// 赤・グレーは自動で統計から除外（チェックを入れた状態で固定して見せる）
+const AUTO_EXCLUDE = ['red', 'gray'];
+let manualExclude = false;
+function syncExclude() {
+  const auto = AUTO_EXCLUDE.includes(chosenColor);
+  const ck = $('excludeCheck');
+  if (auto) { if (!ck.disabled) manualExclude = ck.checked; ck.checked = true; ck.disabled = true; }
+  else if (ck.disabled) { ck.disabled = false; ck.checked = manualExclude; }
+  $('excludeText').textContent = auto ? '統計から除外（赤・グレーは自動で除外）' : '統計から除外（休憩・打ち合わせなど）';
+}
 async function saveCells(color, name, rng) {
   if (busy) return;
   busy = true; $('saving').classList.remove('hidden');
   try {
-    const r = await api('/api/edit/cells', { method: 'POST', body: { date: current.date, times: rng, ownTimes: current.own, color, name, exclude: !!(color || name) && $('excludeCheck').checked } });
+    const r = await api('/api/edit/cells', { method: 'POST', body: { date: current.date, times: rng, ownTimes: current.own, color, name, exclude: !!(color || name) && !AUTO_EXCLUDE.includes(color) && $('excludeCheck').checked } });
     const entry = days.find(d => d.date === r.date);
     if (entry) entry.day = r.day;
     render();
