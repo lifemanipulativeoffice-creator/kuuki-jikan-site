@@ -977,8 +977,41 @@ document.addEventListener('pointermove', e => {
     return;
   }
   const r = dragRange(a, td.dataset.time);
+  a.x = e.clientX; a.y = e.clientY;
   if (r.start !== a.range.start || r.minutes !== a.range.minutes) { a.range = r; dragPaint(a); }
+  if (a.raw !== td.dataset.time) { a.raw = td.dataset.time; paintRaw(a); }
 });
+// 同じ日の中でなぞった範囲（予約をまたいでも全部）。予約が入っていればコピーできるので青で示す
+function rawRange(a) { const t = [a.time, a.raw || a.time].sort(); return { t0: t[0], t1: t[1] }; }
+function rawBookings(a) { const r = rawRange(a); return extractBookings(a.date, dragDay(a.date)).filter(b => b.start >= r.t0 && b.start <= r.t1); }
+function paintRaw(a) {
+  document.querySelectorAll('#gridBody td.copy-sel').forEach(td => td.classList.remove('copy-sel'));
+  if (!rawBookings(a).length) return;
+  const r = rawRange(a);
+  document.querySelectorAll('#gridBody td[data-date="' + a.date + '"]').forEach(td => { if (td.dataset.time >= r.t0 && td.dataset.time <= r.t1 && !td.classList.contains('drag-sel')) td.classList.add('copy-sel'); });
+}
+// 同じ日の中をなぞって離したとき：「予約を入れる」か「この範囲をコピー」かを選ぶ
+function chooseAfterDrag(a) {
+  const r = rawRange(a), n = rawBookings(a).length;
+  const len = a.range.minutes > 10 ? a.range.minutes : 0;
+  const m = $('ctxMenu');
+  m.innerHTML = '<button type="button" data-ch="new">予約を入れる<small>' + a.range.start + '〜' + toTime(toMin(a.range.start) + (len || settings.defaultLength || 60)) + '</small></button>' +
+    '<button type="button" data-ch="copy"' + (n ? '' : ' disabled style="opacity:.45;cursor:default"') + '>この範囲をコピー<small>' + (n ? '予約' + n + '件' : '予約なし') + '</small></button>' +
+    '<hr><button type="button" data-ch="cancel">やめる<small>Esc</small></button>';
+  m.classList.remove('hidden');
+  const x = a.x || window.innerWidth / 2, y = a.y || window.innerHeight / 2;
+  m.style.left = Math.min(x + 4, window.innerWidth - m.offsetWidth - 6) + 'px';
+  m.style.top = Math.min(y + 4, window.innerHeight - m.offsetHeight - 6) + 'px';
+  dragPaint(a); paintRaw(a); // 選んだ範囲を見せたまま
+  const done = () => { closeCtxMenu(); dragClear(); document.querySelectorAll('#gridBody td.copy-sel').forEach(td => td.classList.remove('copy-sel')); };
+  m.onclick = ev => {
+    const b = ev.target.closest('[data-ch]'); if (!b || b.disabled) return;
+    done();
+    if (b.dataset.ch === 'new') openCell(a.date, a.range.start, len);
+    else if (b.dataset.ch === 'copy') { setSelection({ a: { date: a.date, time: r.t0 }, b: { date: a.date, time: r.t1 } }); doCopy(); }
+  };
+  setTimeout(() => { const f = m.querySelector('[data-ch=new]'); if (f) f.focus(); }, 0); // Enter で「予約を入れる」
+}
 // 長押しで選び始めたら画面がスクロールしないようにする
 document.addEventListener('touchmove', e => { if (dragState.active) e.preventDefault(); }, { passive: false });
 $('gridBody').addEventListener('contextmenu', e => {
@@ -1027,8 +1060,11 @@ function openCtxMenu(td, x, y) {
     else if (act === 'end') endPaste();
   };
 }
-document.addEventListener('pointerdown', e => { if (!e.target.closest('#ctxMenu')) closeCtxMenu(); }, true);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCtxMenu(); });
+document.addEventListener('pointerdown', e => {
+  if (e.target.closest('#ctxMenu') || $('ctxMenu').classList.contains('hidden')) return;
+  closeCtxMenu(); dragClear(); document.querySelectorAll('#gridBody td.copy-sel').forEach(td => { if (!selection) td.classList.remove('copy-sel'); });
+}, true);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('ctxMenu').classList.contains('hidden')) { closeCtxMenu(); dragClear(); if (!selection) document.querySelectorAll('#gridBody td.copy-sel').forEach(td => td.classList.remove('copy-sel')); } });
 window.addEventListener('scroll', closeCtxMenu, true);
 function dragEnd(cancel) {
   clearTimeout(dragState.timer);
@@ -1040,7 +1076,9 @@ function dragEnd(cancel) {
   dragState.suppressClick = true;
   setTimeout(() => { dragState.suppressClick = false; }, 400);
   if (a.select || a.mode === 'select') { if (cancel) clearSelection(); else updateBar(); return; }
-  if (!cancel) openCell(a.date, a.range.start, a.range.minutes > 10 ? a.range.minutes : 0); // 1マスだけなら通常の長さ
+  if (cancel) return;
+  if (a.raw && a.raw !== a.time) { chooseAfterDrag(a); return; } // なぞったときは「予約を入れる／コピー」を選ぶ
+  openCell(a.date, a.range.start, 0); // 長押しだけ（動かさない）は今までどおり記入画面
 }
 document.addEventListener('pointerup', () => dragEnd(false));
 document.addEventListener('pointercancel', () => dragEnd(true));
