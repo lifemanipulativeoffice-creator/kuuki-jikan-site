@@ -122,6 +122,11 @@ table.grid { border-collapse: separate; border-spacing: 0; width: 100%; min-widt
 /* 範囲コピー */
 .copy-bar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 45; display: flex; align-items: center; gap: 10px; background: #5b4032; color: #fff; padding: 8px 10px 8px 16px; border-radius: 24px; box-shadow: 0 6px 18px rgba(0,0,0,.25); font-size: 13px; font-weight: 700; max-width: 94vw; }
 .copy-bar .btn { min-height: 32px; padding: 4px 12px; color: #5b4032; background: #fff; }
+.copy-bar .btn.primary { background: #2f6fd6; color: #fff; border-color: #2f6fd6; }
+.copy-bar-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.grid td.paste-ghost { box-shadow: inset 0 0 0 2px #2f6fd6; background-color: rgba(47,111,214,.18) !important; }
+.grid td.paste-ng { box-shadow: inset 0 0 0 2px #d03b3b; background-color: rgba(208,59,59,.22) !important; }
+body.paste-mode .grid td { cursor: copy; }
 .grid td.copy-sel:not([class*="c-"]) { background-color: rgba(47,111,214,.22) !important; }
 .grid td.copy-sel[class*="c-"] { filter: brightness(.8) saturate(1.3); box-shadow: inset 0 0 0 2px #2f6fd6; }
 body.copy-mode .grid td { cursor: cell; }
@@ -305,7 +310,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c;
           <button type="button" data-page="patient" data-main-only>患者さんが見るページ（○×表）</button>
           <button type="button" id="reloadBtn">最新の状態に更新</button>
           <hr>
-          <button type="button" id="copyModeBtn">範囲をコピーして貼り付け</button>
+          <button type="button" id="copyModeBtn">範囲を選んでコピー（空き枠から選ぶとき）</button>
           <button type="button" id="reportBtn">月の予約記録（PDF・会計くん用）</button>
           <button type="button" data-page="fixed">固定予約・週のコピー</button>
           <button type="button" data-page="stats">キャンセル統計</button>
@@ -426,7 +431,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c;
     <div class="actions"><button class="btn" type="button" id="confirmNo">やめる</button><button class="btn primary" type="button" id="confirmYes">OK</button></div>
   </div>
 </div>
-<div id="copyBar" class="copy-bar hidden"><span id="copyBarText">コピーする範囲をなぞってください</span><button class="btn" type="button" id="copyBarStop">やめる</button></div>
+<div id="copyBar" class="copy-bar hidden"><span id="copyBarText"></span><span id="copyBarBtns" class="copy-bar-btns"></span></div>
 <div id="pasteModal" class="overlay hidden" role="dialog" aria-modal="true">
   <div class="sheet">
     <h2>範囲をコピー</h2>
@@ -705,87 +710,30 @@ function renderCols() {
   body.replaceChildren(frag);
 }
 
+/* =========================================================
+   予約表の操作（スプレッドシート風）
+   ・空いている枠をなぞる（同じ日）→ 離すと記入画面（長さは選んだ分）
+   ・予約のある枠からなぞる／別の日までなぞる／Shiftを押しながら → 範囲を選ぶ（青）
+     → 「コピー」（PCは Ctrl+C）→ 貼り付けたい位置（左上）をクリック／タップ（PCは Ctrl+V も可）
+     → 何回でも貼れる。Esc か「終了」でやめる。直前の貼り付けは「元に戻す」（Ctrl+Z）
+   ・スマホ・タブレットは長押ししてから指を動かす
+   ========================================================= */
+const dragState = { pending: null, active: null, timer: 0, suppressClick: false };
+let copyMode = false;      // ☰ から入る「なぞると必ず範囲選択」モード（空き枠から選びたいとき用）
+let selection = null;      // { a:{date,time}, b:{date,time} }
+let clip = null;           // { items:[{dOff,tOff,minutes,color,name,x}], label, w, h }
+let pasteMode = false, hoverCell = null, lastPaste = null, clipboard = null;
+
 $('gridBody').addEventListener('click', e => {
   if (dragState.suppressClick) { dragState.suppressClick = false; return; }
-  if (copyMode) return; // 範囲コピー中はタップで記入画面を開かない
   const td = e.target.closest('td');
-  if (td && td.dataset.date) openCell(td.dataset.date, td.dataset.time);
+  if (!td || !td.dataset.date) return;
+  if (pasteMode) { pasteAt(td.dataset.date, td.dataset.time); return; }
+  if (selection) { clearSelection(); return; } // 選択中のクリックは選択を外すだけ
+  if (copyMode) return;
+  openCell(td.dataset.date, td.dataset.time);
 });
 
-/* ---------- なぞって予約の長さを選ぶ ----------
-   PC：空いている枠からマウスを押したまま動かす → 離すと記入画面（長さは選んだ分）
-   スマホ・タブレット：空いている枠を長押し（約0.4秒）→ そのまま指を動かす → 離すと記入画面
-   ほかの予約がある枠の手前で止まる。予約のある枠から始めたときは今までどおりタップで開く */
-const dragState = { pending: null, active: null, timer: 0, suppressClick: false };
-/* ---------- 範囲をコピーして貼り付け ----------
-   ☰ →「範囲をコピーして貼り付け」でコピーモード。予約表をなぞって（日付×時刻の四角）選び、
-   離すと貼り付け先を選ぶ画面。開始時刻が選んだ範囲に入っている予約をコピーする（日付のずれと曜日はそのまま） */
-let copyMode = false, clipboard = null;
-function setCopyMode(on) {
-  copyMode = on;
-  document.body.classList.toggle('copy-mode', on);
-  $('copyBar').classList.toggle('hidden', !on);
-  $('copyBarText').textContent = 'コピーする範囲をなぞってください' + (window.matchMedia('(pointer: coarse)').matches ? '（長押ししてから指を動かす）' : '');
-  if (!on) copyClear();
-}
-function copyClear() { document.querySelectorAll('#gridBody td.copy-sel').forEach(td => td.classList.remove('copy-sel')); }
-function copyRect(a) {
-  const di = [days.findIndex(d => d.date === a.a.date), days.findIndex(d => d.date === a.b.date)].sort((x, y) => x - y);
-  const ti = [times.indexOf(a.a.time), times.indexOf(a.b.time)].sort((x, y) => x - y);
-  return { dates: days.slice(di[0], di[1] + 1).map(d => d.date), from: times[ti[0]], to: times[ti[1]] };
-}
-function copyPaint(a) {
-  copyClear();
-  const r = copyRect(a), ds = new Set(r.dates);
-  document.querySelectorAll('#gridBody td[data-date]').forEach(td => {
-    if (ds.has(td.dataset.date) && td.dataset.time >= r.from && td.dataset.time <= r.to) td.classList.add('copy-sel');
-  });
-}
-function copyFinish(a) {
-  const r = copyRect(a);
-  const items = [];
-  r.dates.forEach(date => {
-    extractBookings(date, dragDay(date)).filter(b => b.start >= r.from && b.start <= r.to)
-      .forEach(b => items.push({ date, start: b.start, minutes: b.minutes, color: b.color, name: b.name, x: b.excluded ? 1 : 0 }));
-  });
-  copyClear();
-  if (!items.length) { toast('選んだ範囲に予約がありません', true); return; }
-  clipboard = { first: r.dates[0], last: r.dates[r.dates.length - 1], from: r.from, to: r.to, items };
-  setCopyMode(false);
-  openPaste();
-}
-function openPaste() {
-  const c = clipboard;
-  $('pasteInfo').textContent = 'コピーした予約：' + c.items.length + '件\n' + label(c.first) + (c.last !== c.first ? ' 〜 ' + label(c.last) : '') + '　' + c.from + '〜' + toTime(toMin(c.to) + 10) + ' の範囲';
-  $('pasteDate').value = fmt(addDays(parse(c.first), 7)); // 初期値：1週間後の同じ曜日
-  $('pasteWeeks').value = '1'; $('pasteForce').checked = false; $('pasteOut').innerHTML = '';
-  $('pasteRun').disabled = false;
-  openModal('pasteModal');
-}
-$('copyModeBtn').addEventListener('click', () => { $('menuList').classList.add('hidden'); setCopyMode(true); });
-$('copyBarStop').addEventListener('click', () => setCopyMode(false));
-$('pasteCancel').addEventListener('click', () => closeModals());
-$('pasteRun').addEventListener('click', async () => {
-  const c = clipboard; if (!c || !$('pasteDate').value) return;
-  const shift = Math.round((parse($('pasteDate').value) - parse(c.first)) / 86400000);
-  if (shift === 0) { $('pasteOut').innerHTML = '<div class="warn">コピー元と同じ日です。貼り付け先の日を変えてください。</div>'; return; }
-  const weeks = Number($('pasteWeeks').value) || 1;
-  const items = [];
-  for (let w = 0; w < weeks; w++) c.items.forEach(it => items.push(Object.assign({}, it, { date: fmt(addDays(parse(it.date), shift + w * 7)) })));
-  const force = $('pasteForce').checked;
-  if (force && !(await askConfirm('重なる予約は上書きして消えます。貼り付けますか？', '上書きして貼り付け'))) return;
-  $('pasteRun').disabled = true;
-  try {
-    const r = (await api('/api/edit/paste', { method: 'POST', body: { items, force } })).result;
-    const lines = ['【貼り付け完了】入れた予約：' + r.placed + '件' + (r.existing ? '（同じ予約がすでにあった：' + r.existing + '件）' : '')];
-    if (r.skipped.length) lines.push('重なるため入れなかった：' + r.skipped.length + '件', ...r.skipped.slice(0, 20).map(x => '・' + label(x.date) + ' ' + x.start + ' ' + (x.name || '') + '（' + x.reason + '）'));
-    if (r.overwritten && r.overwritten.length) lines.push('上書きで消えた予約：' + r.overwritten.length + '件', ...r.overwritten.slice(0, 20).map(x => '・' + label(x.date) + ' ' + x.start + ' ' + (x.name || '')));
-    $('pasteOut').innerHTML = '<div class="result-box" style="margin:8px 0 10px">' + esc(lines.join('\n')) + '</div>';
-    toast(r.placed + '件を貼り付けました');
-    loadWeek().catch(() => {});
-  } catch (err) { $('pasteOut').innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; }
-  finally { $('pasteRun').disabled = false; }
-});
 function dragDay(date) { const e = days.find(d => d.date === date); return e ? e.day : null; }
 function dragClear() {
   document.querySelectorAll('#gridBody td.drag-sel').forEach(td => td.classList.remove('drag-sel'));
@@ -811,16 +759,170 @@ function dragPaint(a) {
     if (m >= s && m < e) td.classList.add('drag-sel');
   });
 }
+
+/* ---- 範囲選択 ---- */
+function selRect(s) {
+  const da = s.a.date <= s.b.date ? [s.a.date, s.b.date] : [s.b.date, s.a.date];
+  const ta = s.a.time <= s.b.time ? [s.a.time, s.b.time] : [s.b.time, s.a.time];
+  return { from: da[0], to: da[1], t0: ta[0], t1: ta[1] };
+}
+function paintSelection() {
+  document.querySelectorAll('#gridBody td.copy-sel').forEach(td => td.classList.remove('copy-sel'));
+  if (!selection) return;
+  const r = selRect(selection);
+  document.querySelectorAll('#gridBody td[data-date]').forEach(td => {
+    const d = td.dataset.date, t = td.dataset.time;
+    if (d >= r.from && d <= r.to && t >= r.t0 && t <= r.t1) td.classList.add('copy-sel');
+  });
+}
+function selectionBookings() {
+  const r = selRect(selection), out = [];
+  days.filter(x => x.date >= r.from && x.date <= r.to).forEach(({ date, day }) =>
+    extractBookings(date, day).filter(b => b.start >= r.t0 && b.start <= r.t1).forEach(b => out.push(Object.assign({ date }, b))));
+  return { r, list: out };
+}
+function clearSelection() { selection = null; paintSelection(); updateBar(); }
+function setSelection(s) { selection = s; paintSelection(); updateBar(); }
+
+/* ---- 下のバー（いま何ができるか） ---- */
+function updateBar() {
+  const bar = $('copyBar'), txt = $('copyBarText'), btns = $('copyBarBtns');
+  const touch = window.matchMedia('(pointer: coarse)').matches;
+  let html = '';
+  if (pasteMode && clip) {
+    txt.textContent = '📋 ' + clip.items.length + '件をコピー中：貼り付ける位置（左上）を' + (touch ? 'タップ' : 'クリック');
+    html = '<button class="btn" type="button" data-act="repeat">くり返し貼り付け…</button>' +
+      (lastPaste ? '<button class="btn" type="button" data-act="undo">元に戻す</button>' : '') +
+      '<button class="btn" type="button" data-act="end">終了</button>';
+  } else if (selection) {
+    const n = selectionBookings().list.length;
+    txt.textContent = '選択中：予約 ' + n + '件';
+    html = '<button class="btn primary" type="button" data-act="copy"' + (n ? '' : ' disabled') + '>コピー' + (touch ? '' : '（Ctrl+C）') + '</button>' +
+      '<button class="btn" type="button" data-act="clear">解除</button>';
+  } else if (copyMode) {
+    txt.textContent = 'コピーする範囲をなぞってください' + (touch ? '（長押ししてから指を動かす）' : '');
+    html = '<button class="btn" type="button" data-act="mode-off">やめる</button>';
+  } else if (lastPaste) {
+    txt.textContent = '貼り付けました';
+    html = '<button class="btn" type="button" data-act="undo">元に戻す</button><button class="btn" type="button" data-act="close">閉じる</button>';
+  }
+  btns.innerHTML = html;
+  bar.classList.toggle('hidden', !html);
+  document.body.classList.toggle('copy-mode', copyMode || !!selection);
+  document.body.classList.toggle('paste-mode', pasteMode);
+}
+$('copyBarBtns').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'copy') doCopy();
+  else if (act === 'clear') clearSelection();
+  else if (act === 'mode-off') { copyMode = false; clearSelection(); }
+  else if (act === 'end') endPaste();
+  else if (act === 'undo') undoPaste();
+  else if (act === 'close') { lastPaste = null; updateBar(); }
+  else if (act === 'repeat') openPaste();
+});
+
+function doCopy() {
+  if (!selection) return;
+  const { r, list } = selectionBookings();
+  if (!list.length) { toast('選んだ範囲に予約がありません', true); return; }
+  // 貼り付けの基準（左上）＝選んだ予約のうち一番早い日・一番早い開始時刻（余白をなぞっても位置がずれないように）
+  const base = parse(list.map(b => b.date).sort()[0]), baseMin = Math.min(...list.map(b => toMin(b.start)));
+  clip = {
+    items: list.map(b => ({ dOff: Math.round((parse(b.date) - base) / 86400000), tOff: toMin(b.start) - baseMin, minutes: b.minutes, color: b.color, name: b.name, x: b.excluded ? 1 : 0 })),
+  };
+  // 「くり返し貼り付け」用（日付つき）
+  clipboard = { first: r.from, last: r.to, from: r.t0, to: r.t1, items: list.map(b => ({ date: b.date, start: b.start, minutes: b.minutes, color: b.color, name: b.name, x: b.excluded ? 1 : 0 })) };
+  copyMode = false;
+  selection = null; paintSelection();
+  pasteMode = true;
+  updateBar();
+  toast(clip.items.length + '件をコピーしました');
+}
+function endPaste() { pasteMode = false; clearGhost(); updateBar(); }
+
+// 貼り付け先（左上）から、各予約の行き先を計算
+function pasteTargets(date, time) {
+  const base = parse(date), m0 = toMin(time);
+  return clip.items.map(it => ({ date: fmt(addDays(base, it.dOff)), start: toTime(m0 + it.tOff), minutes: it.minutes, color: it.color, name: it.name, x: it.x, startMin: m0 + it.tOff }));
+}
+function clearGhost() { document.querySelectorAll('#gridBody td.paste-ghost, #gridBody td.paste-ng').forEach(td => td.classList.remove('paste-ghost', 'paste-ng')); }
+function paintGhost(date, time) {
+  clearGhost();
+  if (!pasteMode || !clip) return;
+  pasteTargets(date, time).forEach(t => {
+    const day = dragDay(t.date);
+    for (let m = t.startMin; m < t.startMin + t.minutes; m += 10) {
+      const td = document.querySelector('#gridBody td[data-date="' + t.date + '"][data-time="' + toTime(m) + '"]');
+      const ng = !times.includes(toTime(m)) || (day && isBlocking(day.cells[toTime(m)]));
+      if (td) td.classList.add(ng ? 'paste-ng' : 'paste-ghost');
+    }
+  });
+}
+$('gridBody').addEventListener('pointerover', e => {
+  if (!pasteMode) return;
+  const td = e.target.closest('td');
+  if (!td || !td.dataset.date) return;
+  hoverCell = { date: td.dataset.date, time: td.dataset.time };
+  paintGhost(hoverCell.date, hoverCell.time);
+});
+$('gridBody').addEventListener('pointerleave', () => { if (pasteMode) clearGhost(); });
+
+async function pasteAt(date, time) {
+  if (!clip) return;
+  const targets = pasteTargets(date, time);
+  const out = targets.filter(t => t.startMin < toMin(times[0]) || t.startMin + t.minutes > toMin(times[times.length - 1]) + 10);
+  const items = targets.filter(t => !out.includes(t)).map(({ startMin, ...t }) => t);
+  if (!items.length) { toast('予約表の時間の外になるため貼れません', true); return; }
+  // 元に戻すために、貼り付け先の日の今の中身を控えておく
+  const dates = [...new Set(items.map(t => t.date))].sort();
+  const before = {};
+  try {
+    const months = [...new Set(dates.map(d => d.slice(0, 7)))];
+    for (const mo of months) (await api('/api/edit/month?month=' + mo)).days.forEach(x => { if (dates.includes(x.date)) before[x.date] = x.day; });
+    const r = (await api('/api/edit/paste', { method: 'POST', body: { items } })).result;
+    lastPaste = r.placed ? before : null;
+    clearGhost();
+    await loadWeek();
+    const skipped = r.skipped.length + out.length;
+    toast(r.placed + '件を貼り付けました' + (skipped ? '（重なり・時間外で ' + skipped + '件は入れていません）' : ''), !!skipped && !r.placed);
+    updateBar();
+  } catch (err) { toast(err.message, true); }
+}
+async function undoPaste() {
+  if (!lastPaste) return;
+  try {
+    await restoreInChunks({ app: 'yoyaku-chan', version: 1, days: lastPaste });
+    lastPaste = null;
+    await loadWeek();
+    toast('貼り付ける前に戻しました');
+    updateBar();
+  } catch (err) { toast(err.message, true); }
+}
+
+// キーボード（PC）：Ctrl+C コピー／Ctrl+V 指している位置に貼り付け／Ctrl+Z 元に戻す／Esc やめる
+document.addEventListener('keydown', e => {
+  if (!$('appView') || $('appView').classList.contains('hidden')) return;
+  if (document.querySelector('.overlay:not(.hidden)') || !$('pageView').classList.contains('hidden') || !$('reportView').classList.contains('hidden')) return;
+  if (/INPUT|SELECT|TEXTAREA/.test((document.activeElement || {}).tagName || '')) return;
+  const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
+  if (mod && k === 'c' && selection) { e.preventDefault(); doCopy(); }
+  else if (mod && k === 'v' && pasteMode && hoverCell) { e.preventDefault(); pasteAt(hoverCell.date, hoverCell.time); }
+  else if (mod && k === 'z' && lastPaste) { e.preventDefault(); undoPaste(); }
+  else if (e.key === 'Escape') { if (pasteMode) endPaste(); else if (selection || copyMode) { copyMode = false; clearSelection(); } }
+});
+
+/* ---- なぞる操作 ---- */
 function dragStart(p) {
   dragState.pending = null;
-  if (p.copy) {
-    dragState.active = { copy: true, a: { date: p.date, time: p.time }, b: { date: p.date, time: p.time } };
-    copyPaint(dragState.active);
-    if (p.touch && navigator.vibrate) try { navigator.vibrate(15); } catch {}
-    return;
+  if (p.select) {
+    dragState.active = { select: true };
+    setSelection({ a: { date: p.date, time: p.time }, b: { date: p.date, time: p.time } });
+  } else {
+    dragState.active = { date: p.date, time: p.time, range: { start: p.time, minutes: 10 } };
+    dragPaint(dragState.active);
   }
-  dragState.active = { date: p.date, time: p.time, range: { start: p.time, minutes: 10 } };
-  dragPaint(dragState.active);
   if (p.touch && navigator.vibrate) try { navigator.vibrate(15); } catch {}
 }
 function dragTdAt(x, y) {
@@ -829,13 +931,16 @@ function dragTdAt(x, y) {
   return td && td.dataset.date ? td : null;
 }
 $('gridBody').addEventListener('pointerdown', e => {
-  if (e.button > 0) return;
+  if (e.button > 0 || pasteMode) return;
   const td = e.target.closest('td');
   if (!td || !td.dataset.date) return;
   const day = dragDay(td.dataset.date);
-  if (!day || (!copyMode && isBlocking(day.cells[td.dataset.time]))) return; // 予約のある枠は今までどおり（コピー中はどこからでも）
+  if (!day) return;
+  const booked = isBlocking(day.cells[td.dataset.time]);
+  // Shift＋クリック：選択中なら範囲を広げる
+  if (e.shiftKey && selection) { setSelection({ a: selection.a, b: { date: td.dataset.date, time: td.dataset.time } }); dragState.suppressClick = true; return; }
   const touch = e.pointerType !== 'mouse';
-  dragState.pending = { date: td.dataset.date, time: td.dataset.time, x: e.clientX, y: e.clientY, touch, copy: copyMode };
+  dragState.pending = { date: td.dataset.date, time: td.dataset.time, x: e.clientX, y: e.clientY, touch, select: copyMode || booked || e.shiftKey };
   clearTimeout(dragState.timer);
   if (touch) dragState.timer = setTimeout(() => { if (dragState.pending) dragStart(dragState.pending); }, 400);
 });
@@ -850,11 +955,18 @@ document.addEventListener('pointermove', e => {
   const a = dragState.active;
   if (!a) return;
   const td = dragTdAt(e.clientX, e.clientY);
-  if (a.copy) {
-    if (td && (td.dataset.date !== a.b.date || td.dataset.time !== a.b.time)) { a.b = { date: td.dataset.date, time: td.dataset.time }; copyPaint(a); }
+  if (!td) return;
+  if (!a.select && td.dataset.date !== a.date) {
+    // 空き枠から別の日へなぞった → 範囲選択に切り替え
+    dragClear();
+    dragState.active = { select: true };
+    setSelection({ a: { date: a.date, time: a.time }, b: { date: td.dataset.date, time: td.dataset.time } });
     return;
   }
-  if (!td || td.dataset.date !== a.date) return;
+  if (dragState.active.select) {
+    if (td.dataset.date !== selection.b.date || td.dataset.time !== selection.b.time) { selection.b = { date: td.dataset.date, time: td.dataset.time }; paintSelection(); }
+    return;
+  }
   const r = dragRange(a, td.dataset.time);
   if (r.start !== a.range.start || r.minutes !== a.range.minutes) { a.range = r; dragPaint(a); }
 });
@@ -870,11 +982,45 @@ function dragEnd(cancel) {
   dragClear();
   dragState.suppressClick = true;
   setTimeout(() => { dragState.suppressClick = false; }, 400);
-  if (a.copy) { if (cancel) copyClear(); else copyFinish(a); return; }
+  if (a.select) { if (cancel) clearSelection(); else updateBar(); return; }
   if (!cancel) openCell(a.date, a.range.start, a.range.minutes > 10 ? a.range.minutes : 0); // 1マスだけなら通常の長さ
 }
 document.addEventListener('pointerup', () => dragEnd(false));
 document.addEventListener('pointercancel', () => dragEnd(true));
+
+/* ---- くり返し貼り付け（週ごとにまとめて） ---- */
+function openPaste() {
+  const c = clipboard;
+  $('pasteInfo').textContent = 'コピーした予約：' + c.items.length + '件\n' + label(c.first) + (c.last !== c.first ? ' 〜 ' + label(c.last) : '') + '　' + c.from + '〜' + toTime(toMin(c.to) + 10) + ' の範囲';
+  $('pasteDate').value = fmt(addDays(parse(c.first), 7)); // 初期値：1週間後の同じ曜日
+  $('pasteWeeks').value = '1'; $('pasteForce').checked = false; $('pasteOut').innerHTML = '';
+  $('pasteRun').disabled = false;
+  openModal('pasteModal');
+}
+$('pasteCancel').addEventListener('click', () => closeModals());
+$('pasteRun').addEventListener('click', async () => {
+  const c = clipboard; if (!c || !$('pasteDate').value) return;
+  const shift = Math.round((parse($('pasteDate').value) - parse(c.first)) / 86400000);
+  if (shift === 0) { $('pasteOut').innerHTML = '<div class="warn">コピー元と同じ日です。貼り付け先の日を変えてください。</div>'; return; }
+  const weeks = Number($('pasteWeeks').value) || 1;
+  const items = [];
+  for (let w = 0; w < weeks; w++) c.items.forEach(it => items.push(Object.assign({}, it, { date: fmt(addDays(parse(it.date), shift + w * 7)) })));
+  const force = $('pasteForce').checked;
+  if (force && !(await askConfirm('重なる予約は上書きして消えます。貼り付けますか？', '上書きして貼り付け'))) return;
+  $('pasteRun').disabled = true;
+  try {
+    const r = (await api('/api/edit/paste', { method: 'POST', body: { items, force } })).result;
+    const lines = ['【貼り付け完了】入れた予約：' + r.placed + '件' + (r.existing ? '（同じ予約がすでにあった：' + r.existing + '件）' : '')];
+    if (r.skipped.length) lines.push('重なるため入れなかった：' + r.skipped.length + '件', ...r.skipped.slice(0, 20).map(x => '・' + label(x.date) + ' ' + x.start + ' ' + (x.name || '') + '（' + x.reason + '）'));
+    if (r.overwritten && r.overwritten.length) lines.push('上書きで消えた予約：' + r.overwritten.length + '件', ...r.overwritten.slice(0, 20).map(x => '・' + label(x.date) + ' ' + x.start + ' ' + (x.name || '')));
+    $('pasteOut').innerHTML = '<div class="result-box" style="margin:8px 0 10px">' + esc(lines.join('\n')) + '</div>';
+    toast(r.placed + '件を貼り付けました');
+    loadWeek().catch(() => {});
+  } catch (err) { $('pasteOut').innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; }
+  finally { $('pasteRun').disabled = false; }
+});
+$('copyModeBtn').addEventListener('click', () => { $('menuList').classList.add('hidden'); pasteMode = false; clearGhost(); copyMode = true; clearSelection(); });
+
 
 /* ---------- 端末ごとの表示期間（スマホ1週・タブレット2週・PC4週） ---------- */
 const VIEW_KEY = 'yoyaku_view_weeks';
