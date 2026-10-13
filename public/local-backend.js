@@ -249,6 +249,13 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
       return reply({ ok: true, result: res });
     }
     extendCopies = () => { const h = horizon(); (meta.copies || []).forEach(r => { if (r.weeks === null && r.filledUntil < addD(h, -7)) fill(r, h, { placed: 0, existing: 0, skipped: [] }); }); save(); };
+    if (url.pathname === '/api/edit/paste') {
+      const res = { placed: 0, existing: 0, skipped: [], overwritten: [] }; const per = {};
+      (body.items || []).forEach(it => { (per[it.date] = per[it.date] || []).push(Object.assign({ start: it.start, minutes: it.minutes, color: it.color || '', name: String(it.name || '').slice(0, 20) }, it.x ? { x: 1 } : {})); });
+      Object.keys(per).sort().forEach(d => place(d, per[d], res, body.force === true));
+      save();
+      return reply({ ok: true, result: res });
+    }
     if (url.pathname === '/api/edit/clear') {
       const all = body.all === true;
       if (!all && !(body.from && body.to && body.from <= body.to)) return reply({ ok: false, error: '開始日と終了日を正しく選んでください。' }, 400);

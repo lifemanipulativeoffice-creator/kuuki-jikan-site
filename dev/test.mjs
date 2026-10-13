@@ -337,4 +337,25 @@ assert.equal((await call('POST', '/api/edit/cells', { date: '2026-12-23', times:
   assert.ok(!pub.slots.some(x => x.time >= '22:00'));
 }
 
+// 23) 範囲コピーの貼り付け：重なりは入れずに知らせる、force で上書き、統計除外も引き継ぐ
+await call('POST', '/api/edit/cells', { date: '2027-01-05', times: T('11:00', 60), color: 'red', name: '先客' }, token2);
+r = await call('POST', '/api/edit/paste', { items: [
+  { date: '2027-01-05', start: '10:00', minutes: 60, color: 'pink', name: '貼る人' },
+  { date: '2027-01-05', start: '11:00', minutes: 30, color: 'blue', name: '重なる人' },
+  { date: '2027-01-06', start: '13:00', minutes: 60, color: 'gray', name: '会議', x: 1 },
+] }, token2);
+assert.equal(r.status, 200);
+assert.equal(r.body.result.placed, 2);
+assert.equal(r.body.result.skipped.length, 1);
+{
+  const wkP = (await call('GET', '/api/edit/week?start=2027-01-04', null, token2)).body.days;
+  assert.equal(wkP[1].day.cells['10:00'].n, '貼る人');
+  assert.equal(wkP[1].day.cells['11:00'].n, '先客');
+  assert.equal(wkP[2].day.cells['13:00'].x, 1);
+  assert.ok(!wkP[1].day.cells['10:00'].s);
+}
+r = await call('POST', '/api/edit/paste', { items: [{ date: '2027-01-05', start: '11:00', minutes: 30, color: 'blue', name: '重なる人' }], force: true }, token2);
+assert.equal(r.body.result.overwritten.length, 1);
+assert.equal((await call('POST', '/api/edit/paste', { items: [{ date: '2027-01-05', start: '23:00', minutes: 30, color: 'blue' }] }, token2)).status, 400);
+
 console.log('ALL TESTS PASSED');
