@@ -529,6 +529,7 @@ async function api(path, options = {}) {
 
 /* ---------- 状態 ---------- */
 let weekStart = getMonday(new Date());
+let pcMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1); // PC（1か月表）で表示中の月の1日
 let times = [];
 let days = []; // [{date, day:{closed, cells}}]
 let current = null; // 編集中の枠 {date, time}
@@ -1175,12 +1176,17 @@ window.addEventListener('resize', () => {
 async function loadWeek(scrollToBusiness) {
   shownWeeks = viewWeeks();
   document.body.classList.toggle('multi', shownWeeks === 2);
-  let nDays = shownWeeks * 7;
-  if (shownWeeks === 4) {
-    // PC：今週の月曜から4週間（1画面に収めて文字を大きく）
-    nDays = 28;
+  let nDays = shownWeeks * 7, start = weekStart;
+  const pc = shownWeeks === 4;
+  if (pc) {
+    // PC：表示中の月の1日〜末日（前月・次月で1か月ずつ入れ替える）
+    start = pcMonth;
+    nDays = new Date(pcMonth.getFullYear(), pcMonth.getMonth() + 1, 0).getDate();
   }
-  const r = await api('/api/edit/week?start=' + fmt(weekStart) + '&days=' + nDays);
+  $('prevWeek').textContent = pc ? '‹ 前月' : '‹ 前週';
+  $('nextWeek').textContent = pc ? '次月 ›' : '次週 ›';
+  $('todayBtn').textContent = pc ? '今月' : '今週';
+  const r = await api('/api/edit/week?start=' + fmt(start) + '&days=' + nDays);
   times = r.times; days = r.days;
   if (r.settings) settings = r.settings;
   $('pwWarn').classList.toggle('hidden', !(r.auth && r.auth.isDefault));
@@ -2518,7 +2524,7 @@ function resultHtml(r, period) {
 /* ---------- 週の移動 ---------- */
 /* ---------- 年と月を選んで移動 ---------- */
 // 表示中の週の「月」は土曜日の月で数える（その月の最初の月〜土を含む週がその月）
-function shownMonth() { const sat = addDays(weekStart, 5); return { y: sat.getFullYear(), m: sat.getMonth() + 1 }; }
+function shownMonth() { if (viewWeeks() === 4) return { y: pcMonth.getFullYear(), m: pcMonth.getMonth() + 1 }; const sat = addDays(weekStart, 5); return { y: sat.getFullYear(), m: sat.getMonth() + 1 }; }
 let ymYear = new Date().getFullYear();
 function updateYm() { const { y, m } = shownMonth(); $('ymLabel').textContent = y + '年' + m + '月'; }
 function renderYmPanel() {
@@ -2542,6 +2548,7 @@ $('ymNext').addEventListener('click', () => { ymYear++; renderYmPanel(); });
 $('ymMonths').addEventListener('click', e => {
   const b = e.target.closest('[data-m]'); if (!b) return;
   let first = new Date(ymYear, Number(b.dataset.m) - 1, 1);
+  pcMonth = new Date(first);
   if (first.getDay() === 0) first = addDays(first, 1); // 1日が日曜なら月曜から
   weekStart = getMonday(first);
   closeYm();
@@ -2549,7 +2556,14 @@ $('ymMonths').addEventListener('click', e => {
 });
 document.addEventListener('click', closeYm);
 
-function moveWeek(n) { weekStart = n === 0 ? getMonday(new Date()) : addDays(weekStart, 7 * n); loadWeek(n === 0).catch(err => toast(err.message, true)); }
+function moveWeek(n) {
+  if (viewWeeks() === 4) { // PC：1か月ずつ
+    const now = new Date();
+    pcMonth = n === 0 ? new Date(now.getFullYear(), now.getMonth(), 1) : new Date(pcMonth.getFullYear(), pcMonth.getMonth() + n, 1);
+    weekStart = getMonday(n === 0 ? now : pcMonth);
+  } else weekStart = n === 0 ? getMonday(new Date()) : addDays(weekStart, 7 * n);
+  loadWeek(n === 0).catch(err => toast(err.message, true));
+}
 $('prevWeek').addEventListener('click', () => moveWeek(-1));
 $('nextWeek').addEventListener('click', () => moveWeek(1));
 $('todayBtn').addEventListener('click', () => moveWeek(0));
