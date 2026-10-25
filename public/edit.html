@@ -333,6 +333,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid #9d574c;
           <button type="button" data-page="clear">予約データを消す</button>
           <hr>
           <button type="button" data-page="password" data-main-only>パスワード変更</button>
+          <button type="button" data-page="fromMain" data-sub-only hidden>予約ちゃん本体からコピー</button>
           <button type="button" id="subResetBtn" data-sub-only hidden>データをすべて消す</button>
           <hr>
           <button type="button" id="logoutBtn" class="logout">ログアウト</button>
@@ -1622,7 +1623,7 @@ $('csvBtn').addEventListener('click', () => {
 });
 
 /* ---------- メニューの各ページ ---------- */
-const PAGE_TITLES = { password: 'パスワード変更', import: 'スプレッドシートから取り込み', settings: '設定（予約の長さ）', stats: 'キャンセル統計', util: '稼働率', fixed: '固定予約・週のコピー', kaikei: '会計くんから取り込み', patient: '患者さんが見るページ（○×表）', clear: '予約データを消す' };
+const PAGE_TITLES = { password: 'パスワード変更', import: 'スプレッドシートから取り込み', settings: '設定（予約の長さ）', stats: 'キャンセル統計', util: '稼働率', fixed: '固定予約・週のコピー', kaikei: '会計くんから取り込み', patient: '患者さんが見るページ（○×表）', clear: '予約データを消す', fromMain: '予約ちゃん本体からコピー' };
 const LENGTH_CHOICES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 150, 180, 'all'];
 const lenText = v => v === 'all' ? '当日全て' : v + '分';
 const pageBody = () => $('pageBody');
@@ -1631,7 +1632,7 @@ function openPage(name) {
   $('pageTitle').textContent = PAGE_TITLES[name];
   pageBody().innerHTML = '<p class="empty">読み込み中…</p>';
   $('pageView').classList.remove('hidden');
-  ({ password: pagePassword, import: pageImport, settings: pageSettings, stats: pageStats, util: pageUtil, fixed: pageFixed, kaikei: pageKaikei, patient: pagePatient, clear: pageClear })[name]().catch(err => { pageBody().innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; });
+  ({ password: pagePassword, import: pageImport, settings: pageSettings, stats: pageStats, util: pageUtil, fixed: pageFixed, kaikei: pageKaikei, patient: pagePatient, clear: pageClear, fromMain: pageFromMain })[name]().catch(err => { pageBody().innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; });
 }
 document.querySelectorAll('[data-page]').forEach(b => b.addEventListener('click', () => openPage(b.dataset.page)));
 $('pageClose').addEventListener('click', () => { $('pageView').classList.add('hidden'); loadWeek().catch(() => {}); });
@@ -1783,6 +1784,50 @@ async function pageImport() {
       loadWeek().catch(() => {});
     } catch (err) { $('csvOut').innerHTML = '<div class="warn" style="margin-top:12px">取り込めませんでした：' + esc(err.message) + '</div>'; b.disabled = false; }
   });
+}
+
+/* ---------- 予約ちゃん本体からコピー（予約ちゃん2だけ） ----------
+   本体（サーバー）のデータを読み込んで、予約ちゃん2に入れる。向きは本体→予約ちゃん2だけ。本体には何も書き込まない */
+async function mainApi(path, options = {}, token) {
+  const f = mainBackend ? mainBackend.fetch : fetch;
+  const res = await f(path, { method: options.method || 'GET', headers: Object.assign({ 'content-type': 'application/json' }, token ? { authorization: 'Bearer ' + token } : {}), body: options.body ? JSON.stringify(options.body) : undefined, cache: 'no-store' });
+  let json = {}; try { json = await res.json(); } catch {}
+  if (!res.ok || json.ok === false) throw new Error(json.error || ('本体につながりませんでした (' + res.status + ')'));
+  return json;
+}
+async function pageFromMain() {
+  pageBody().innerHTML =
+    '<div class="pg-card"><h3>予約ちゃん本体のデータをコピー</h3>' +
+    '<p class="sub">本体（サーバー）の予約・休診・設定・キャンセル記録を読み込んで、この予約ちゃん2に入れます。本体には何も書き込みません。</p>' +
+    '<div class="pg-row"><label>本体のパスワード<input type="password" id="fmPw" class="text-input" autocomplete="off"></label></div>' +
+    '<div style="margin-top:10px;display:grid;gap:6px">' +
+    '<label class="sub" style="margin:0"><input type="radio" name="fmMode" value="replace" checked> 予約ちゃん2を本体と同じにする（予約ちゃん2だけにある予約は消えます）</label>' +
+    '<label class="sub" style="margin:0"><input type="radio" name="fmMode" value="merge"> 本体にある日だけ上書きする（予約ちゃん2だけにある日は残す）</label></div>' +
+    '<div class="actions" style="margin-top:12px"><button class="btn primary" type="button" id="fmRun">本体からコピー</button></div>' +
+    '<div id="fmOut"></div></div>';
+  const out = h => { $('fmOut').innerHTML = h; };
+  const run = async () => {
+    const pw = $('fmPw').value;
+    if (!pw) { out('<div class="warn" style="margin-top:12px">本体のパスワードを入れてください。</div>'); return; }
+    if (pw === SUB_PASSWORD) { out('<div class="warn" style="margin-top:12px">予約ちゃん2のパスワードではなく、本体のパスワードを入れてください。</div>'); return; }
+    const replace = document.querySelector('input[name=fmMode]:checked').value === 'replace';
+    if (!(await askConfirm(replace ? '予約ちゃん2の中身を、本体と同じ内容に入れ替えます。' : '本体にある日の予約を、予約ちゃん2に上書きします。', 'コピーする'))) return;
+    $('fmRun').disabled = true;
+    try {
+      out('<p class="empty">本体を読み込んでいます…</p>');
+      const token = (await mainApi('/api/login', { method: 'POST', body: { password: pw } })).token; // 本体のログイン状態は変えない（この場限り）
+      const data = await mainApi('/api/edit/export', {}, token);
+      $('fmPw').value = '';
+      if (replace) await api('/api/edit/clear', { method: 'POST', body: { all: true, cancels: true } });
+      const n = Object.keys(data.days || {}).length;
+      const r = await restoreInChunks(data, k => out('<p class="empty">予約ちゃん2に入れています… ' + k + ' / ' + n + '日</p>'));
+      out('<div class="result-box" style="margin-top:12px">【コピー完了】本体の ' + r.restoredDays + '日分を入れました' + (replace ? '（予約ちゃん2は本体と同じ内容になりました）' : '') + (r.warning ? '\n' + esc(r.warning) : '') + '</div>');
+      toast('本体からコピーしました');
+    } catch (err) { out('<div class="warn" style="margin-top:12px">' + esc(err.message) + (/fetch|Failed|つながり/.test(err.message) ? '<br>インターネットにつながっているか、試験サイトから開いているか確認してください（パソコンに保存したHTMLファイルからは本体につながりません）。' : '') + '</div>'); }
+    finally { $('fmRun').disabled = false; }
+  };
+  $('fmRun').addEventListener('click', run);
+  $('fmPw').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
 }
 
 /* ---------- 予約データを消す（範囲指定・全部） ---------- */
