@@ -1886,12 +1886,13 @@ async function pageKaikei() {
     '<p class="sub" id="kkPicked" style="margin:6px 0 0">まだファイルが選ばれていません。</p>' +
     '<div style="margin-top:10px;display:grid;gap:6px">' +
     '<label class="sub" style="margin:0"><input type="checkbox" id="kkPast" checked> 今日以降の日は入れない（予約表の本物の予約を守る）</label>' +
-    '<label class="sub" style="margin:0"><input type="checkbox" id="kkKeep" checked> 予約表にすでに予約・休診がある日は入れない（外すとその日をまるごと置き換え）</label></div>' +
+    '<label class="sub" style="margin:0"><input type="checkbox" id="kkFixed" checked> 赤・グレーの枠（休診・私用など）は固定して残す（その日の空いている枠に来院記録を入れる）</label>' +
+    '<label class="sub" style="margin:0"><input type="checkbox" id="kkKeep" checked> 予約表にすでに予約（ピンク・青）がある日は入れない（外すとその日の予約を置き換え）</label></div>' +
     '<div class="actions" style="margin-top:12px"><button class="btn" type="button" id="kkCheck" disabled>1. 内容を確認</button><button class="btn primary" type="button" id="kkRun" disabled>2. 取り込む</button></div>' +
     '<div id="kkOut"></div>' +
     (kaikeiUndo ? '<div class="actions" style="margin-top:12px"><button class="btn" type="button" id="kkUndo">直前の取り込みを元に戻す（' + Object.keys(kaikeiUndo).length + '日分）</button></div>' : '') +
     '</div>' +
-    '<div class="pg-card"><h3>注意</h3><p class="sub" style="margin:0">取り込む日は、その日の予約表がまるごとファイルの中身になります。念のため、先に ☰ →「バックアップを保存」をしておくと確実に戻せます。<br>「元に戻す」は、このページを閉じても再読み込みするまで使えます。</p></div>';
+    '<div class="pg-card"><h3>注意</h3><p class="sub" style="margin:0">取り込む日は、その日の予約表がファイルの中身になります（「赤・グレーの枠は固定して残す」にチェックがあれば、赤・グレーだけは残ります）。念のため、先に ☰ →「バックアップを保存」をしておくと確実に戻せます。<br>「元に戻す」は、このページを閉じても再読み込みするまで使えます。</p></div>';
 
   let file = null, plan = null;
   const out = html => { $('kkOut').innerHTML = html; };
@@ -1910,7 +1911,7 @@ async function pageKaikei() {
       out(wrong ? '<div class="warn" style="margin-top:12px">ファイル名が' + (mode === 'sub' ? '予約ちゃん（本体）用' : '予約ちゃん2用') + 'になっています。取り込む先が合っているか確認してください。</div>' : '');
     } catch (err) { file = null; $('kkCheck').disabled = true; $('kkPicked').textContent = 'ファイルを読めませんでした'; out('<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'); }
   });
-  ['kkPast', 'kkKeep'].forEach(id => $(id).addEventListener('change', invalidate));
+  ['kkPast', 'kkKeep', 'kkFixed'].forEach(id => $(id).addEventListener('change', invalidate));
 
   $('kkCheck').addEventListener('click', async () => {
     if (!file) return;
@@ -1920,24 +1921,46 @@ async function pageKaikei() {
       const today = fmt(new Date());
       const dates = Object.keys(file.data.days).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
       const take = {}, before = {};
-      let future = 0, existing = 0, bookings = 0;
+      const keepFixed = $('kkFixed').checked;
+      const isFixed = c => c && (c.c === 'red' || c.c === 'gray');
+      let future = 0, existing = 0, bookings = 0, fixedKept = 0;
+      const clash = [];
       for (const d of dates) {
         if ($('kkPast').checked && d >= today) { future++; continue; }
-        const has = !!cur[d];
+        const now = cur[d] || { closed: false, cells: {} };
+        const nowBk = extractBookings(d, normalizeClientDay(now));
+        const fixedBk = keepFixed ? nowBk.filter(b => b.color === 'red' || b.color === 'gray') : [];
+        const otherBk = nowBk.filter(b => !fixedBk.includes(b));
+        const has = keepFixed ? otherBk.length > 0 : (nowBk.length > 0 || now.closed);
         if (has && $('kkKeep').checked) { existing++; continue; }
-        take[d] = file.data.days[d];
+        const imp = normalizeClientDay(file.data.days[d]);
+        let day = imp;
+        if (keepFixed && fixedBk.length) {
+          // 赤・グレーの枠はそのまま残し、来院記録はその空いている枠にだけ入れる（重なる来院は入れずに一覧へ）
+          day = { closed: !!(now.closed || imp.closed), cells: {} };
+          Object.entries(now.cells || {}).forEach(([t, c]) => { if (isFixed(c)) day.cells[t] = c; });
+          extractBookings(d, imp).forEach(b => {
+            const ts = []; for (let m = toMin(b.start); m < toMin(b.end); m += 10) ts.push(toTime(m));
+            if (ts.some(t => day.cells[t])) { clash.push(label(d) + ' ' + b.start + ' ' + (b.name || '')); return; }
+            ts.forEach((t, i) => { day.cells[t] = Object.assign({ c: b.color }, i === 0 && b.name ? { n: b.name } : {}); });
+          });
+          fixedKept += fixedBk.length;
+        } else if (keepFixed && now.closed) day = Object.assign({}, imp, { closed: true });
+        take[d] = day;
         before[d] = cur[d] || { closed: false, cells: {} };
-        bookings += extractBookings(d, normalizeClientDay(take[d])).length;
+        bookings += extractBookings(d, normalizeClientDay(day)).filter(b => !(b.color === 'red' || b.color === 'gray') || !keepFixed).length;
       }
       const n = Object.keys(take).length;
       plan = { take, before };
-      const overwrite = Object.keys(take).filter(d => cur[d]).length;
+      const overwrite = Object.keys(take).filter(d => cur[d] && extractBookings(d, normalizeClientDay(cur[d])).some(b => !keepFixed || !(b.color === 'red' || b.color === 'gray'))).length;
       out('<div class="result-box" style="margin-top:12px">【確認】まだ保存していません\n' +
         'ファイルの期間：' + (dates[0] || '－') + ' 〜 ' + (dates[dates.length - 1] || '－') + '（' + dates.length + '日）\n' +
         '取り込む日：' + n + '日（予約 ' + bookings + '件）' + (n ? '　' + Object.keys(take)[0] + ' 〜 ' + Object.keys(take)[n - 1] : '') + '\n' +
         (future ? '今日以降なので入れない日：' + future + '日\n' : '') +
-        (existing ? 'すでに予約・休診があるので入れない日：' + existing + '日\n' : '') +
-        (overwrite ? '⚠ 置き換える日（今の予約は消えます）：' + overwrite + '日\n' : '') + '</div>');
+        (existing ? 'すでに予約があるので入れない日：' + existing + '日\n' : '') +
+        (fixedKept ? '固定して残す赤・グレーの枠：' + fixedKept + '件\n' : '') +
+        (overwrite ? '⚠ 予約を置き換える日（今の予約は消えます）：' + overwrite + '日\n' : '') +
+        (clash.length ? '⚠ 赤・グレーと重なるため入れない来院：' + clash.length + '件\n' + clash.slice(0, 30).map(x => '・' + x).join('\n') + (clash.length > 30 ? '\n…ほか' + (clash.length - 30) + '件' : '') + '\n' : '') + '</div>');
       $('kkRun').disabled = !n;
     } catch (err) { out('<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'); }
   });
