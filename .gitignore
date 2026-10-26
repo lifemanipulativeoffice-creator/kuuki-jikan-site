@@ -5,3 +5,4 @@ service-account-key.json
 node_modules/
 manual-overrides.json
 .netlify/
+.playwright-mcp/
