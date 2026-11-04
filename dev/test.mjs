@@ -280,7 +280,7 @@ assert.equal((await call('POST', '/api/login', { password: 'newpass99' })).statu
 // バックアップにパスワード情報は入らない
 const exp3 = (await call('GET', '/api/edit/export', null, token2)).body;
 assert.ok(!JSON.stringify(exp3).includes('"hash"') && !exp3.extra['meta/auth']);
-assert.equal((await call('POST', '/api/edit/password', { current: 'newpass99', next: 'test' }, token2)).status, 400); // test は予約ちゃん2用
+assert.equal((await call('POST', '/api/edit/password', { current: 'newpass99', next: '1111' }, token2)).status, 400); // 1111 は予約ちゃん2用
 // 10回間違えるとロック（正しいパスワードでも入れない）
 for (let i = 0; i < 10; i++) await call('POST', '/api/login', { password: 'nope' + i });
 assert.equal((await call('POST', '/api/login', { password: 'newpass99' })).status, 429);
