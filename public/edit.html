@@ -134,6 +134,9 @@ table.grid { border-collapse: separate; border-spacing: 0; width: 100%; min-widt
 .grid td.copy-part::before { content: ''; position: absolute; pointer-events: none; background: rgba(47,111,214,.35); box-shadow: inset 0 0 0 2px #2f6fd6; z-index: 1; }
 .grid td.copy-part.part-x::before { top: 0; bottom: 0; left: var(--p0); right: var(--p1); }
 .grid td.copy-part.part-y::before { left: 0; right: 0; top: var(--p0); bottom: var(--p1); }
+/* 戻る・進む */
+.hist-btn { min-height: 38px; padding: 4px 10px; font-size: 18px; line-height: 1; }
+.hist-btn:disabled { opacity: .35; cursor: default; }
 /* 右クリックメニュー */
 .ctx-menu { position: fixed; z-index: 60; min-width: 190px; background: #fff; border: 1px solid var(--bd); border-radius: 10px; box-shadow: 0 8px 24px rgba(var(--ink-rgb),.22); padding: 5px; }
 .ctx-menu button { display: flex; justify-content: space-between; gap: 16px; width: 100%; border: 0; background: none; text-align: left; padding: 8px 10px; border-radius: 7px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; }
@@ -177,7 +180,7 @@ table.grid.month { min-width: 900px; --rowh: 22px; --fs: 11px; }
   .brand { flex: 0 0 auto; order: 1; }
   .weeknav { order: 2; flex: 1 1 auto; margin-top: 0; justify-content: center; }
   .weeknav .label { flex: 0 1 auto; min-width: 230px; }
-  .ympick { order: 3; } #todayBtn { order: 4; } .menu { order: 5; }
+  .ympick { order: 3; } #todayBtn, .hist-btn { order: 4; } .menu { order: 5; }
 }
 
 /* 複数週の表示（タブレット・PC） */
@@ -325,6 +328,8 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid var(--br
         </div>
       </div>
       <button class="btn" id="todayBtn" type="button" style="min-height:38px;padding:6px 10px">今週</button>
+      <button class="btn hist-btn" id="undoBtn" type="button" title="元に戻す（Ctrl+Z）" aria-label="元に戻す" disabled>↶</button>
+      <button class="btn hist-btn" id="redoBtn" type="button" title="やり直す（Ctrl+Y）" aria-label="やり直す" disabled>↷</button>
       <div class="menu">
         <button class="btn" id="menuBtn" type="button" aria-label="メニュー" style="min-height:38px;padding:6px 12px">☰</button>
         <div class="menu-list hidden" id="menuList">
@@ -337,6 +342,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid var(--br
           <button type="button" data-page="util">稼働率</button>
           <button type="button" data-page="settings">設定（予約の長さ）</button>
           <hr>
+          <button type="button" data-page="autobk">自動バックアップ</button>
           <button type="button" id="exportBtn">バックアップを保存（JSON）</button>
           <button type="button" id="restoreBtn">バックアップから復元</button>
           <button type="button" data-page="import">スプレッドシートから取り込み</button>
@@ -358,6 +364,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid var(--br
     </div>
   </header>
 
+  <div id="bkWarn" class="pw-warn hidden">自動バックアップが止まっています（保存先フォルダの許可が必要です）。<button class="btn" type="button" id="bkWarnBtn">再開する</button></div>
   <div id="pwWarn" class="pw-warn hidden">初期パスワード（0000）のままです。<button class="btn" type="button" id="pwWarnBtn">パスワードを変える</button></div>
   <div class="grid-wrap" id="gridWrap">
     <table class="grid" id="gridTable">
@@ -465,6 +472,14 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid var(--br
     <div class="actions"><button class="btn" type="button" id="pasteCancel">閉じる</button><button class="btn primary" type="button" id="pasteRun">貼り付け</button></div>
   </div>
 </div>
+<div id="fillModal" class="overlay hidden" role="dialog" aria-modal="true">
+  <div class="sheet">
+    <h2 id="fillTitle"></h2>
+    <p id="fillInfo" style="white-space:pre-wrap;margin:0 0 10px"></p>
+    <div class="field"><label for="fillName">名前（任意：休み・研修・会議 など）</label><input id="fillName" class="text-input" maxlength="20" autocomplete="off"></div>
+    <div class="actions"><button class="btn" type="button" data-close>やめる</button><button class="btn primary" type="button" id="fillRun">まとめて変える</button></div>
+  </div>
+</div>
 <div id="saving" class="saving hidden">保存中…</div>
 
 <script src="/local-backend.js"></script>
@@ -511,6 +526,7 @@ function applyMode(m) {
   const sub = m === 'sub';
   document.title = sub ? '予約ちゃん2' : '予約ちゃん';
   document.body.classList.toggle('theme-sub', sub); // 本体＝青系、予約ちゃん2＝赤系
+  if (typeof clearHistory === 'function') clearHistory();
   const tc = document.querySelector('meta[name=theme-color]'); if (tc) tc.setAttribute('content', sub ? '#b23a3a' : '#2f5f9e');
   document.querySelectorAll('.brand-name').forEach(el => { el.textContent = sub ? '予約ちゃん2' : '予約ちゃん'; });
   document.querySelectorAll('[data-main-only]').forEach(el => { el.hidden = sub; });
@@ -526,7 +542,60 @@ function toast(msg, isError) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => el.remove(), isError ? 5000 : 2200);
 }
 
+/* ---------- 戻る・進む（操作の履歴） ----------
+   予約の記入・休診の切り替え・貼り付け・範囲の一括変更を記録し、その日の「前の状態／後の状態」で戻す・進む。
+   まとめて変わる操作（復元・取り込み・消す・キャンセル処理など）をしたら、履歴は消す（古い状態で上書きしないため） */
+const HIST_TRACK = ['/api/edit/cells', '/api/edit/day', '/api/edit/paste'];
+const HIST_RESET = ['/api/edit/restore', '/api/edit/clear', '/api/edit/import-sheet', '/api/edit/series/delete', '/api/edit/cancel', '/api/edit/cancel/restore', '/api/edit/copy-week', '/api/edit/fixed/apply'];
+let histUndo = [], histRedo = [], histDepth = 0;
+function histDates(path, body) {
+  if (path === '/api/edit/paste') return [...new Set((body.items || []).map(x => x.date))];
+  return body && body.date ? [body.date] : [];
+}
+async function snapshotDays(dates) {
+  const out = {};
+  for (const mo of [...new Set(dates.map(d => d.slice(0, 7)))]) {
+    (await api('/api/edit/month?month=' + mo)).days.forEach(x => { if (dates.includes(x.date)) out[x.date] = { closed: !!x.day.closed, cells: x.day.cells || {} }; });
+  }
+  dates.forEach(d => { if (!out[d]) out[d] = { closed: false, cells: {} }; });
+  return out;
+}
+async function withHistory(dates, label, fn) {
+  histDepth++;
+  try {
+    const before = await snapshotDays(dates);
+    const r = await fn();
+    const after = await snapshotDays(dates);
+    histUndo.push({ label, before, after }); if (histUndo.length > 50) histUndo.shift();
+    histRedo = [];
+    return r;
+  } finally { histDepth--; updateHistButtons(); scheduleAutoBackup(); }
+}
+function clearHistory() { histUndo = []; histRedo = []; updateHistButtons(); }
+function updateHistButtons() {
+  if (!$('undoBtn')) return;
+  $('undoBtn').disabled = !histUndo.length; $('redoBtn').disabled = !histRedo.length;
+}
+async function histMove(back) {
+  const from = back ? histUndo : histRedo, to = back ? histRedo : histUndo;
+  const e = from.pop(); if (!e) return;
+  histDepth++;
+  try {
+    await restoreInChunks({ app: 'yoyaku-chan', version: 1, days: back ? e.before : e.after });
+    to.push(e);
+    await loadWeek();
+    toast(back ? '1つ前に戻しました' : '1つ先に進めました');
+  } catch (err) { from.push(e); toast(err.message, true); }
+  finally { histDepth--; updateHistButtons(); updateBar(); scheduleAutoBackup(); }
+}
 async function api(path, options = {}) {
+  if ((options.method || 'GET') === 'POST' && histDepth === 0) {
+    if (HIST_TRACK.includes(path)) { const ds = histDates(path, options.body || {}); if (ds.length) return withHistory(ds, path, () => rawApi(path, options)); }
+    else if (HIST_RESET.includes(path) && !(options.body && options.body.dryRun)) { clearHistory(); scheduleAutoBackup(); }
+  }
+  return rawApi(path, options);
+}
+async function rawApi(path, options = {}) {
   const backend = mode === 'sub' ? subBackend.fetch : (mainBackend ? mainBackend.fetch : fetch);
   const res = await backend(path, {
     method: options.method || 'GET',
@@ -576,6 +645,7 @@ async function doLogin() {
     $('password').value = '';
     $('pwWarn').classList.toggle('hidden', !(mode === 'main' && r.isDefault));
     showApp();
+    setTimeout(() => runAutoBackup(false, true), 1500); // ログインしたら1日1回、自動バックアップ
     await loadWeek(true);
   } catch (err) {
     $('loginError').textContent = err.message; $('loginError').classList.remove('hidden');
@@ -747,7 +817,7 @@ const dragState = { pending: null, active: null, timer: 0, suppressClick: false 
 let copyMode = false;      // ☰ から入る「なぞると必ず範囲選択」モード（空き枠から選びたいとき用）
 let selection = null;      // { a:{date,time}, b:{date,time} }
 let clip = null;           // { items:[{dOff,tOff,minutes,color,name,x}], label, w, h }
-let pasteMode = false, hoverCell = null, lastPaste = null, clipboard = null;
+let pasteMode = false, hoverCell = null, clipboard = null;
 
 $('gridBody').addEventListener('click', e => {
   if (dragState.suppressClick) { dragState.suppressClick = false; return; }
@@ -842,7 +912,7 @@ function updateBar() {
   if (clip && !selection) {
     txt.textContent = '📋 ' + clip.items.length + '件をコピー中：' + (pasteMode ? '貼り付ける位置（左上）をタップ' : '貼り付けたい位置で右クリック（Ctrl+V）');
     html = '<button class="btn" type="button" data-act="repeat">くり返し貼り付け…</button>' +
-      (lastPaste ? '<button class="btn" type="button" data-act="undo">元に戻す</button>' : '') +
+      (histUndo.length ? '<button class="btn" type="button" data-act="undo">元に戻す</button>' : '') +
       '<button class="btn" type="button" data-act="end">終了</button>';
   } else if (selection) {
     const n = selectionBookings().list.length;
@@ -852,9 +922,6 @@ function updateBar() {
   } else if (copyMode) {
     txt.textContent = 'コピーする範囲をなぞってください' + (touch ? '（長押ししてから指を動かす）' : '');
     html = '<button class="btn" type="button" data-act="mode-off">やめる</button>';
-  } else if (lastPaste) {
-    txt.textContent = '貼り付けました';
-    html = '<button class="btn" type="button" data-act="undo">元に戻す</button><button class="btn" type="button" data-act="close">閉じる</button>';
   }
   btns.innerHTML = html;
   bar.classList.toggle('hidden', !html);
@@ -869,7 +936,6 @@ $('copyBarBtns').addEventListener('click', e => {
   else if (act === 'mode-off') { copyMode = false; clearSelection(); }
   else if (act === 'end') endPaste();
   else if (act === 'undo') undoPaste();
-  else if (act === 'close') { lastPaste = null; updateBar(); }
   else if (act === 'repeat') openPaste();
 });
 
@@ -925,14 +991,8 @@ async function pasteAt(date, time) {
   const out = targets.filter(t => t.startMin < toMin(times[0]) || t.startMin + t.minutes > toMin(times[times.length - 1]) + 10);
   const items = targets.filter(t => !out.includes(t)).map(({ startMin, ...t }) => t);
   if (!items.length) { toast('予約表の時間の外になるため貼れません', true); return; }
-  // 元に戻すために、貼り付け先の日の今の中身を控えておく
-  const dates = [...new Set(items.map(t => t.date))].sort();
-  const before = {};
   try {
-    const months = [...new Set(dates.map(d => d.slice(0, 7)))];
-    for (const mo of months) (await api('/api/edit/month?month=' + mo)).days.forEach(x => { if (dates.includes(x.date)) before[x.date] = x.day; });
-    const r = (await api('/api/edit/paste', { method: 'POST', body: { items } })).result;
-    lastPaste = r.placed ? before : null;
+    const r = (await api('/api/edit/paste', { method: 'POST', body: { items } })).result; // 戻る（Ctrl+Z）で取り消せる
     clearGhost();
     await loadWeek();
     const skipped = r.skipped.length + out.length;
@@ -940,16 +1000,7 @@ async function pasteAt(date, time) {
     updateBar();
   } catch (err) { toast(err.message, true); }
 }
-async function undoPaste() {
-  if (!lastPaste) return;
-  try {
-    await restoreInChunks({ app: 'yoyaku-chan', version: 1, days: lastPaste });
-    lastPaste = null;
-    await loadWeek();
-    toast('貼り付ける前に戻しました');
-    updateBar();
-  } catch (err) { toast(err.message, true); }
-}
+function undoPaste() { return histMove(true); }
 
 // キーボード（PC）：Ctrl+C コピー／Ctrl+V 指している位置に貼り付け／Ctrl+Z 元に戻す／Esc やめる
 document.addEventListener('keydown', e => {
@@ -959,7 +1010,8 @@ document.addEventListener('keydown', e => {
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
   if (mod && k === 'c' && selection) { e.preventDefault(); doCopy(); }
   else if (mod && k === 'v' && clip && hoverCell) { e.preventDefault(); pasteAt(hoverCell.date, hoverCell.time); }
-  else if (mod && k === 'z' && lastPaste) { e.preventDefault(); undoPaste(); }
+  else if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); histMove(true); }
+  else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); histMove(false); }
   else if (e.key === 'Escape') { if (!$('ctxMenu').classList.contains('hidden')) return; if (clip && !selection) endPaste(); else if (selection || copyMode) { copyMode = false; clearSelection(); } }
 });
 
@@ -1082,7 +1134,9 @@ function openCtxMenu(td, x, y) {
   if (inSelection(date, time)) items.push(['copy', 'コピー', 'Ctrl+C']);
   else if (booked) items.push(['copy-one', 'この予約をコピー', '']);
   if (clip) items.push(['paste', 'ここに貼り付け', 'Ctrl+V'], ['repeat', 'くり返し貼り付け…', '']);
-  if (lastPaste) items.push(['undo', '元に戻す（直前の貼り付け）', 'Ctrl+Z']);
+  if (selection) items.push(['fill-gray', 'この範囲をグレーにする（日付をまたいで一括）', ''], ['fill-red', 'この範囲を赤にする（日付をまたいで一括）', ''], ['fill-clear', 'この範囲の赤・グレーを消す', '']);
+  if (histUndo.length) items.push(['undo', '元に戻す', 'Ctrl+Z']);
+  if (histRedo.length) items.push(['redo', 'やり直す', 'Ctrl+Y']);
   if (items.length) items.push(['-']);
   items.push(['open', booked ? '予約を開く（編集）' : 'ここに予約を入れる', '']);
   if (selection) items.push(['clear', '選択を解除', 'Esc']);
@@ -1101,7 +1155,10 @@ function openCtxMenu(td, x, y) {
     else if (act === 'copy-one') { const bk = findBooking(day, time); setSelection({ a: { date, time: bk.start }, b: { date, time: bk.own[bk.own.length - 1] || bk.start } }); doCopy(); } // 予約1件まるごと
     else if (act === 'paste') pasteAt(date, time);
     else if (act === 'repeat') openPaste();
-    else if (act === 'undo') undoPaste();
+    else if (act === 'undo') histMove(true);
+    else if (act === 'redo') histMove(false);
+    else if (act === 'fill-gray' || act === 'fill-red') openFill(act === 'fill-red' ? 'red' : 'gray');
+    else if (act === 'fill-clear') fillSelection(null, '');
     else if (act === 'open') { if (selection) clearSelection(); openCell(date, time); }
     else if (act === 'clear') clearSelection();
     else if (act === 'end') endPaste();
@@ -1161,6 +1218,66 @@ $('pasteRun').addEventListener('click', async () => {
   } catch (err) { $('pasteOut').innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; }
   finally { $('pasteRun').disabled = false; }
 });
+$('undoBtn').addEventListener('click', () => histMove(true));
+$('redoBtn').addEventListener('click', () => histMove(false));
+
+/* ---------- 範囲を赤・グレーにする（日付をまたいで一括） ----------
+   選んだ四角の範囲（日付×時刻）を、日ごとに赤かグレーで埋める。ピンク・青の予約がある枠はそのまま残す（上書きしない）。
+   すでにある赤・グレーは置き換える。color=null なら範囲内の赤・グレーを消す。1回の操作として「戻る」で戻せる */
+let fillColor = 'gray';
+function openFill(color) {
+  fillColor = color;
+  $('fillTitle').textContent = 'この範囲を' + (color === 'red' ? '赤（施術外業務など）' : 'グレー（休み・休診など）') + 'にする';
+  const r = selRect(selection);
+  $('fillInfo').textContent = label(r.from) + (r.to !== r.from ? ' 〜 ' + label(r.to) : '') + '　' + r.t0 + '〜' + toTime(toMin(r.t1) + 10) + '\nピンク・青の予約がある枠はそのまま残します。';
+  $('fillName').value = '';
+  openModal('fillModal');
+  setTimeout(() => $('fillName').focus(), 60);
+}
+async function fillSelection(color, name) {
+  if (!selection) return;
+  const r = selRect(selection);
+  const rangeTimes = times.filter(t => t >= r.t0 && t <= r.t1);
+  const isFix = c => c && (c.c === 'red' || c.c === 'gray');
+  const dates = [];
+  for (let d = parse(r.from); fmt(d) <= r.to; d = addDays(d, 1)) dates.push(fmt(d));
+  let kept = 0, changed = 0;
+  try {
+    await withHistory(dates, 'fill', async () => {
+      const snap = await snapshotDays(dates);
+      for (const date of dates) {
+        const cells = snap[date].cells || {};
+        const fixT = rangeTimes.filter(t => isFix(cells[t]));
+        if (!color) { // 赤・グレーを消す
+          if (fixT.length) { await api('/api/edit/cells', { method: 'POST', body: { date, times: fixT, ownTimes: fixT, color: null, name: '' } }); changed++; }
+          continue;
+        }
+        const free = rangeTimes.filter(t => !cells[t] || isFix(cells[t]) || !isBlocking(cells[t]));
+        kept += rangeTimes.length - free.length > 0 ? 1 : 0;
+        // つながっている枠ごとに1件の予定として入れる（名前は最初の枠に）
+        let seg = [];
+        const flush = async () => {
+          if (!seg.length) return;
+          const own = seg.filter(t => cells[t]);
+          await api('/api/edit/cells', { method: 'POST', body: { date, times: seg, ownTimes: own, color, name } });
+          changed++; seg = [];
+        };
+        for (const t of rangeTimes) {
+          if (free.includes(t) && (!seg.length || toMin(t) === toMin(seg[seg.length - 1]) + 10)) seg.push(t);
+          else { await flush(); if (free.includes(t)) seg.push(t); }
+        }
+        await flush();
+      }
+    });
+    clearSelection();
+    await loadWeek();
+    toast(color ? (changed ? dates.length + '日分を' + (color === 'red' ? '赤' : 'グレー') + 'にしました' + (kept ? '（予約のある日はその枠を残しました）' : '') : '変えられる枠がありませんでした')
+      : (changed ? changed + '日分の赤・グレーを消しました' : '範囲に赤・グレーはありません'));
+  } catch (err) { toast(err.message, true); loadWeek().catch(() => {}); }
+}
+$('fillRun').addEventListener('click', () => { closeModals(); fillSelection(fillColor, $('fillName').value.trim()); });
+$('fillName').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('fillRun').click(); } });
+
 $('copyModeBtn').addEventListener('click', () => { $('menuList').classList.add('hidden'); pasteMode = false; clearGhost(); copyMode = true; clearSelection(); });
 
 
@@ -1636,7 +1753,7 @@ $('csvBtn').addEventListener('click', () => {
 });
 
 /* ---------- メニューの各ページ ---------- */
-const PAGE_TITLES = { password: 'パスワード変更', import: 'スプレッドシートから取り込み', settings: '設定（予約の長さ）', stats: 'キャンセル統計', util: '稼働率', fixed: '固定予約・週のコピー', kaikei: '会計くんから取り込み', patient: '患者さんが見るページ（○×表）', clear: '予約データを消す', fromMain: '予約ちゃん本体からコピー' };
+const PAGE_TITLES = { password: 'パスワード変更', import: 'スプレッドシートから取り込み', settings: '設定（予約の長さ）', stats: 'キャンセル統計', util: '稼働率', fixed: '固定予約・週のコピー', kaikei: '会計くんから取り込み', patient: '患者さんが見るページ（○×表）', autobk: '自動バックアップ', clear: '予約データを消す', fromMain: '予約ちゃん本体からコピー' };
 const LENGTH_CHOICES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 150, 180, 'all'];
 const lenText = v => v === 'all' ? '当日全て' : v + '分';
 const pageBody = () => $('pageBody');
@@ -1645,7 +1762,7 @@ function openPage(name) {
   $('pageTitle').textContent = PAGE_TITLES[name];
   pageBody().innerHTML = '<p class="empty">読み込み中…</p>';
   $('pageView').classList.remove('hidden');
-  ({ password: pagePassword, import: pageImport, settings: pageSettings, stats: pageStats, util: pageUtil, fixed: pageFixed, kaikei: pageKaikei, patient: pagePatient, clear: pageClear, fromMain: pageFromMain })[name]().catch(err => { pageBody().innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; });
+  ({ password: pagePassword, import: pageImport, settings: pageSettings, stats: pageStats, util: pageUtil, fixed: pageFixed, kaikei: pageKaikei, patient: pagePatient, clear: pageClear, fromMain: pageFromMain, autobk: pageAutoBk })[name]().catch(err => { pageBody().innerHTML = '<div class="warn">' + esc(err.message) + '</div>'; });
 }
 document.querySelectorAll('[data-page]').forEach(b => b.addEventListener('click', () => openPage(b.dataset.page)));
 $('pageClose').addEventListener('click', () => { $('pageView').classList.add('hidden'); loadWeek().catch(() => {}); });
@@ -1797,6 +1914,84 @@ async function pageImport() {
       loadWeek().catch(() => {});
     } catch (err) { $('csvOut').innerHTML = '<div class="warn" style="margin-top:12px">取り込めませんでした：' + esc(err.message) + '</div>'; b.disabled = false; }
   });
+}
+
+/* ---------- 自動バックアップ（パソコンのChrome・Edge） ----------
+   最初に保存先フォルダを1回選ぶと、ログインしたとき（1日1回）と、予約を変えてから2分後に、
+   そのフォルダへ自動でバックアップ（JSON）を書き出す。1日1ファイル（同じ日は上書き）、30日より古いものは消す。
+   予約ちゃん（本体）と予約ちゃん2は、保存先もファイル名も別々 */
+const AUTOBK_KEEP_DAYS = 30;
+const autoBkSupported = () => typeof window.showDirectoryPicker === 'function';
+const bkPrefix = () => mode === 'sub' ? 'yoyaku-chan2_auto_' : 'yoyaku-chan_auto_';
+function bkIdb() {
+  return new Promise((ok, ng) => { const r = indexedDB.open('yoyaku_autobackup', 1); r.onupgradeneeded = () => r.result.createObjectStore('h'); r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); });
+}
+async function bkGet(key) { const db = await bkIdb(); return new Promise(ok => { const q = db.transaction('h').objectStore('h').get(key); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); }); }
+async function bkSet(key, v) { const db = await bkIdb(); return new Promise(ok => { const t = db.transaction('h', 'readwrite'); v === null ? t.objectStore('h').delete(key) : t.objectStore('h').put(v, key); t.oncomplete = () => ok(); t.onerror = () => ok(); }); }
+const bkLastKey = () => 'yoyaku_autobk_last_' + mode;
+function bkLast() { try { return localStorage.getItem(bkLastKey()) || ''; } catch { return ''; } }
+let bkTimer = 0;
+function scheduleAutoBackup() { clearTimeout(bkTimer); bkTimer = setTimeout(() => runAutoBackup(false, false), 2 * 60 * 1000); }
+// force：今すぐ（ボタン）／onceADay：ログイン時は今日まだなら
+async function runAutoBackup(force, onceADay) {
+  try {
+    if (!autoBkSupported() || !getToken()) return { ok: false, why: 'unsupported' };
+    const dir = await bkGet(mode); if (!dir) return { ok: false, why: 'nofolder' };
+    if (onceADay && bkLast().slice(0, 10) === fmt(new Date())) return { ok: true, skipped: true };
+    let perm = await dir.queryPermission({ mode: 'readwrite' });
+    if (perm !== 'granted' && force) perm = await dir.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') { $('bkWarn').classList.remove('hidden'); return { ok: false, why: 'permission' }; }
+    $('bkWarn').classList.add('hidden');
+    const data = await api('/api/edit/export');
+    const name = bkPrefix() + fmt(new Date()).replace(/-/g, '') + '.json';
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w = await fh.createWritable(); await w.write(JSON.stringify(data, null, 1)); await w.close();
+    // 古いもの（30日より前）を消す
+    const limit = fmt(addDays(new Date(), -AUTOBK_KEEP_DAYS)).replace(/-/g, '');
+    for await (const [fname] of dir.entries()) {
+      const m = fname.startsWith(bkPrefix()) && /_(\d{8})\.json$/.exec(fname);
+      if (m && m[1] < limit) { try { await dir.removeEntry(fname); } catch {} }
+    }
+    const now = new Date(); const stamp = fmt(now) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+    try { localStorage.setItem(bkLastKey(), stamp); } catch {}
+    return { ok: true, name, stamp };
+  } catch (err) { console.error(err); return { ok: false, why: 'error', msg: err.message }; }
+}
+$('bkWarnBtn').addEventListener('click', async () => { const r = await runAutoBackup(true, false); toast(r.ok ? '自動バックアップを再開しました' : '再開できませんでした（☰ →「自動バックアップ」で保存先を選び直してください）', !r.ok); });
+async function pageAutoBk() {
+  const who = mode === 'sub' ? '予約ちゃん2' : '予約ちゃん（本体）';
+  if (!autoBkSupported()) {
+    pageBody().innerHTML = '<div class="pg-card"><h3>自動バックアップ</h3><div class="warn">この端末・ブラウザでは自動バックアップを使えません。パソコンの Chrome か Edge で開いてください（スマホでは使えません）。<br>手動の「☰ → バックアップを保存（JSON）」はどこでも使えます。</div></div>';
+    return;
+  }
+  const dir = await bkGet(mode);
+  const perm = dir ? await dir.queryPermission({ mode: 'readwrite' }) : '';
+  pageBody().innerHTML =
+    '<div class="pg-card"><h3>' + who + 'の自動バックアップ</h3>' +
+    '<p class="sub">保存先のフォルダを1回選ぶと、ログインしたとき（1日1回）と、予約を変えてから2分後に、そのフォルダへバックアップ（JSON）を自動で保存します。1日1ファイル（同じ日は上書き）で、' + AUTOBK_KEEP_DAYS + '日より古いファイルは自動で消します。予約ちゃん（本体）と予約ちゃん2は別々に設定します。</p>' +
+    '<div class="result-box">保存先：' + (dir ? esc(dir.name) + (perm === 'granted' ? '（使える状態）' : '（許可が必要：「今すぐ保存」を押すと許可を聞かれます）') : '未設定') +
+    '\n最後に保存：' + (bkLast() || 'まだ') + '\nファイル名：' + bkPrefix() + '年月日.json</div>' +
+    '<div class="actions" style="margin-top:12px"><button class="btn primary" type="button" id="bkPick">' + (dir ? '保存先を変える' : '保存先のフォルダを選ぶ') + '</button>' +
+    (dir ? '<button class="btn" type="button" id="bkNow">今すぐ保存</button><button class="btn" type="button" id="bkOff">自動バックアップをやめる</button>' : '') + '</div>' +
+    '<div id="bkOut"></div>' +
+    '<p class="sub" style="margin:12px 0 0">おすすめ：Dドライブ や USBメモリ の中に「予約ちゃんバックアップ」などのフォルダを作って選んでください。ブラウザを開き直したあとは、最初の保存のときに許可を聞かれることがあります（画面上部の「再開する」）。</p></div>';
+  const out = h => { $('bkOut').innerHTML = h; };
+  $('bkPick').addEventListener('click', async () => {
+    try {
+      const h = await window.showDirectoryPicker({ id: 'yoyaku-' + mode, mode: 'readwrite' });
+      await bkSet(mode, h);
+      const r = await runAutoBackup(true, false);
+      out(r.ok ? '<div class="result-box" style="margin-top:12px">保存しました：' + esc(r.name) + '</div>' : '<div class="warn" style="margin-top:12px">保存できませんでした（' + esc(r.msg || r.why) + '）</div>');
+      setTimeout(pageAutoBk, 1200);
+    } catch (err) { if (err.name !== 'AbortError') out('<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'); }
+  });
+  if (dir) {
+    $('bkNow').addEventListener('click', async () => {
+      const r = await runAutoBackup(true, false);
+      out(r.ok ? '<div class="result-box" style="margin-top:12px">保存しました：' + esc(r.name) + '</div>' : '<div class="warn" style="margin-top:12px">保存できませんでした（' + esc(r.msg || r.why) + '）</div>');
+    });
+    $('bkOff').addEventListener('click', async () => { await bkSet(mode, null); toast('自動バックアップをやめました'); pageAutoBk(); });
+  }
 }
 
 /* ---------- 予約ちゃん本体からコピー（予約ちゃん2だけ） ----------
