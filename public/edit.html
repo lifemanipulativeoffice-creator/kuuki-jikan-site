@@ -1931,6 +1931,7 @@ async function pageKaikei() {
     '<p class="sub" id="kkPicked" style="margin:6px 0 0">まだファイルが選ばれていません。</p>' +
     '<div style="margin-top:10px;display:grid;gap:6px">' +
     '<label class="sub" style="margin:0"><input type="checkbox" id="kkPast" checked> 今日以降の日は入れない（予約表の本物の予約を守る）</label>' +
+    '<label class="sub" style="margin:0"><input type="checkbox" id="kkWipe"' + (mode === 'sub' ? ' checked' : '') + '> <b>予約表のピンク・青をすべてファイルの内容で上書きする</b>（ファイルにない日のピンク・青も消す。赤・グレーと休診は残す）</label>' +
     '<label class="sub" style="margin:0"><input type="checkbox" id="kkFixed" checked> 赤・グレーの枠（休診・私用など）は固定して残す（その日の空いている枠に来院記録を入れる）</label>' +
     '<label class="sub" style="margin:0"><input type="checkbox" id="kkKeep" checked> 予約表にすでに予約（ピンク・青）がある日は入れない（外すとその日の予約を置き換え）</label></div>' +
     '<div class="actions" style="margin-top:12px"><button class="btn" type="button" id="kkCheck" disabled>1. 内容を確認</button><button class="btn primary" type="button" id="kkRun" disabled>2. 取り込む</button></div>' +
@@ -1956,7 +1957,9 @@ async function pageKaikei() {
       out(wrong ? '<div class="warn" style="margin-top:12px">ファイル名が' + (mode === 'sub' ? '予約ちゃん（本体）用' : '予約ちゃん2用') + 'になっています。取り込む先が合っているか確認してください。</div>' : '');
     } catch (err) { file = null; $('kkCheck').disabled = true; $('kkPicked').textContent = 'ファイルを読めませんでした'; out('<div class="warn" style="margin-top:12px">' + esc(err.message) + '</div>'); }
   });
-  ['kkPast', 'kkKeep', 'kkFixed'].forEach(id => $(id).addEventListener('change', invalidate));
+  const syncWipe = () => { const w = $('kkWipe').checked; if (w) { $('kkFixed').checked = true; $('kkKeep').checked = false; } $('kkFixed').disabled = w; $('kkKeep').disabled = w; };
+  $('kkWipe').addEventListener('change', syncWipe); syncWipe();
+  ['kkPast', 'kkKeep', 'kkFixed', 'kkWipe'].forEach(id => $(id).addEventListener('change', invalidate));
 
   $('kkCheck').addEventListener('click', async () => {
     if (!file) return;
@@ -1964,9 +1967,13 @@ async function pageKaikei() {
     try {
       const cur = (await api('/api/edit/export')).days || {};
       const today = fmt(new Date());
-      const dates = Object.keys(file.data.days).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+      const fileDates = Object.keys(file.data.days).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+      const wipe = $('kkWipe').checked;
+      // 全部上書き：ファイルの日＋予約表にある日をすべて対象にする（ファイルにない日は「来院なし」として扱う）
+      const dates = wipe ? [...new Set([...fileDates, ...Object.keys(cur).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))])].sort() : fileDates;
       const take = {}, before = {};
-      const keepFixed = $('kkFixed').checked;
+      const keepFixed = $('kkFixed').checked || wipe;
+      let removedOnly = 0;
       const isFixed = c => c && (c.c === 'red' || c.c === 'gray');
       let future = 0, existing = 0, bookings = 0, fixedKept = 0;
       const clash = [];
@@ -1977,10 +1984,11 @@ async function pageKaikei() {
         const fixedBk = keepFixed ? nowBk.filter(b => b.color === 'red' || b.color === 'gray') : [];
         const otherBk = nowBk.filter(b => !fixedBk.includes(b));
         const has = keepFixed ? otherBk.length > 0 : (nowBk.length > 0 || now.closed);
-        if (has && $('kkKeep').checked) { existing++; continue; }
-        const imp = normalizeClientDay(file.data.days[d]);
+        if (has && $('kkKeep').checked && !wipe) { existing++; continue; }
+        const imp = normalizeClientDay(file.data.days[d] || { closed: false, cells: {} });
+        if (wipe && !file.data.days[d]) { if (!otherBk.length) continue; removedOnly += otherBk.length; } // ファイルにない日：ピンク・青があるときだけ消す
         let day = imp;
-        if (keepFixed && fixedBk.length) {
+        if (keepFixed && (fixedBk.length || (wipe && now.closed))) {
           // 赤・グレーの枠はそのまま残し、来院記録はその空いている枠にだけ入れる（重なる来院は入れずに一覧へ）
           day = { closed: !!(now.closed || imp.closed), cells: {} };
           Object.entries(now.cells || {}).forEach(([t, c]) => { if (isFixed(c)) day.cells[t] = c; });
@@ -1999,7 +2007,8 @@ async function pageKaikei() {
       plan = { take, before };
       const overwrite = Object.keys(take).filter(d => cur[d] && extractBookings(d, normalizeClientDay(cur[d])).some(b => !keepFixed || !(b.color === 'red' || b.color === 'gray'))).length;
       out('<div class="result-box" style="margin-top:12px">【確認】まだ保存していません\n' +
-        'ファイルの期間：' + (dates[0] || '－') + ' 〜 ' + (dates[dates.length - 1] || '－') + '（' + dates.length + '日）\n' +
+        'ファイルの期間：' + (fileDates[0] || '－') + ' 〜 ' + (fileDates[fileDates.length - 1] || '－') + '（' + fileDates.length + '日）\n' +
+        (removedOnly ? '⚠ ファイルにない日なので消す予約（ピンク・青）：' + removedOnly + '件\n' : '') +
         '取り込む日：' + n + '日（予約 ' + bookings + '件）' + (n ? '　' + Object.keys(take)[0] + ' 〜 ' + Object.keys(take)[n - 1] : '') + '\n' +
         (future ? '今日以降なので入れない日：' + future + '日\n' : '') +
         (existing ? 'すでに予約があるので入れない日：' + existing + '日\n' : '') +
