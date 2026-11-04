@@ -6,16 +6,27 @@
 [functions]
   node_bundler = "esbuild"
 
-# 編集ページは検索エンジンに載せない・ほかのサイトに埋め込ませない
 [[headers]]
   for = "/*"
   [headers.values]
-    X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "same-origin"
 
+# 患者向けの○×表（/）は、院のWixサイトに埋め込めるようにする（Wix以外のサイトには埋め込ませない）
+[[headers]]
+  for = "/"
+  [headers.values]
+    Content-Security-Policy = "frame-ancestors 'self' https://*.wixsite.com https://*.wix.com https://*.wixstudio.com https://*.editorx.io https://*.filesusr.com https://*.parastorage.com"
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Content-Security-Policy = "frame-ancestors 'self' https://*.wixsite.com https://*.wix.com https://*.wixstudio.com https://*.editorx.io https://*.filesusr.com https://*.parastorage.com"
+
+# 編集ページ（スタッフ用）は検索エンジンに載せない・ほかのサイトに埋め込ませない
 [[headers]]
   for = "/edit.html"
   [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
     X-Robots-Tag = "noindex, nofollow"
     Cache-Control = "no-store"
