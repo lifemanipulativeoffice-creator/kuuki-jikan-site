@@ -519,6 +519,19 @@ function label(dateStr) { const d = parse(dateStr); return (d.getMonth() + 1) + 
 const memToken = { main: '', sub: '' };
 function getToken(m = mode) { try { return localStorage.getItem(TOKEN_KEYS[m]) || memToken[m]; } catch { return memToken[m]; } }
 function setToken(t, m = mode) { memToken[m] = t || ''; try { t ? localStorage.setItem(TOKEN_KEYS[m], t) : localStorage.removeItem(TOKEN_KEYS[m]); } catch {} }
+// 一度ログインしたら30日間はそのまま入れる（最後に使ったほう＝本体か予約ちゃん2で開く）
+const KEEP_LOGIN_DAYS = 30;
+function rememberLogin(m) { try { localStorage.setItem('yoyaku_login_at_' + m, String(Date.now())); localStorage.setItem('yoyaku_last_mode', m); } catch {} }
+function forgetLogin() { try { localStorage.removeItem('yoyaku_last_mode'); } catch {} }
+function keptLoginMode() {
+  try {
+    const m = localStorage.getItem('yoyaku_last_mode');
+    if (m !== 'main' && m !== 'sub') return null;
+    const at = Number(localStorage.getItem('yoyaku_login_at_' + m) || 0);
+    if (!at || Date.now() - at > KEEP_LOGIN_DAYS * 86400000) return null;
+    return localStorage.getItem(TOKEN_KEYS[m]) ? m : null;
+  } catch { return null; }
+}
 
 // 予約ちゃん／予約ちゃん2 で表示を切り替える
 function applyMode(m) {
@@ -642,6 +655,7 @@ async function doLogin() {
     applyMode($('password').value === SUB_PASSWORD ? 'sub' : 'main');
     const r = await api('/api/login', { method: 'POST', body: { password: $('password').value } });
     setToken(r.token);
+    rememberLogin(mode);
     $('password').value = '';
     $('pwWarn').classList.toggle('hidden', !(mode === 'main' && r.isDefault));
     showApp();
@@ -910,10 +924,8 @@ function updateBar() {
   const touch = window.matchMedia('(pointer: coarse)').matches;
   let html = '';
   if (clip && !selection) {
-    txt.textContent = '📋 ' + clip.items.length + '件をコピー中：' + (pasteMode ? '貼り付ける位置（左上）をタップ' : '貼り付けたい位置で右クリック（Ctrl+V）');
-    html = '<button class="btn" type="button" data-act="repeat">くり返し貼り付け…</button>' +
-      (histUndo.length ? '<button class="btn" type="button" data-act="undo">元に戻す</button>' : '') +
-      '<button class="btn" type="button" data-act="end">終了</button>';
+    txt.textContent = '📋 ' + clip.items.length + '件をコピー中：' + (pasteMode ? '貼り付ける位置（左上）をタップするとすぐ登録' : '貼り付けたい位置で右クリックするとすぐ登録（Ctrl+V も可・Escでやめる）');
+    html = '<button class="btn" type="button" data-act="repeat">くり返し貼り付け…</button>';
   } else if (selection) {
     const n = selectionBookings().list.length;
     txt.textContent = '選択中：予約 ' + n + '件';
@@ -996,7 +1008,8 @@ async function pasteAt(date, time) {
     clearGhost();
     await loadWeek();
     const skipped = r.skipped.length + out.length;
-    toast(r.placed + '件を貼り付けました' + (skipped ? '（重なり・時間外で ' + skipped + '件は入れていません）' : ''), !!skipped && !r.placed);
+    toast(r.placed + '件を登録しました' + (skipped ? '（重なり・時間外で ' + skipped + '件は入れていません）' : '') + '　戻すときは ↶（Ctrl+Z）', !!skipped && !r.placed);
+    if (r.placed) { clip = null; pasteMode = false; clearGhost(); } // 貼ったらコピー状態は自動で終わる（「終了」は不要）
     updateBar();
   } catch (err) { toast(err.message, true); }
 }
@@ -1117,6 +1130,8 @@ $('gridBody').addEventListener('contextmenu', e => {
   const td = e.target.closest('td');
   if (!td || !td.dataset.date) return;
   e.preventDefault();
+  // コピー中に右クリック → その位置にすぐ貼り付けて登録（「貼り付け」を押し忘れて記入漏れにならないように）
+  if (clip && !selection) { pasteAt(td.dataset.date, ptTime(td, e.clientX, e.clientY)); return; }
   openCtxMenu(td, e.clientX, e.clientY);
 });
 
@@ -1553,6 +1568,7 @@ document.addEventListener('click', () => $('menuList').classList.add('hidden'));
 $('reloadBtn').addEventListener('click', () => loadWeek().then(() => toast('更新しました')).catch(err => toast(err.message, true)));
 $('logoutBtn').addEventListener('click', () => {
   setToken('');
+  forgetLogin();
   $('menuList').classList.add('hidden');
   applyMode('main');
   showLogin();
@@ -2874,9 +2890,13 @@ $('subResetBtn').addEventListener('click', e => {
 
 /* ---------- 起動 ---------- */
 renderLegend();
-// 起動したら必ずログイン画面から（本体＝0000、予約ちゃん2＝1111）
-applyMode('main');
-showLogin();
+// 起動：30日以内にログインしていればそのまま開く（本体＝0000・青、予約ちゃん2＝1111・赤）。それ以外はログイン画面
+{
+  const kept = keptLoginMode();
+  applyMode(kept || 'main');
+  if (kept) { showApp(); loadWeek(true).catch(err => toast(err.message, true)); setTimeout(() => runAutoBackup(false, true), 2000); }
+  else showLogin();
+}
 </script>
 </body>
 </html>
