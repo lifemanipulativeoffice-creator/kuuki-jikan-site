@@ -197,7 +197,9 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid var(--br
 
 /* モーダル（スマホでは下から出る） */
 .overlay { position: fixed; inset: 0; background: rgba(60,40,30,.42); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
-.sheet { width: min(100vw, 460px); background: var(--paper); border-radius: 18px 18px 0 0; padding: 18px 16px; padding-bottom: max(18px, env(safe-area-inset-bottom)); max-height: 92vh; overflow: auto; }
+.sheet { width: min(100vw, 460px); background: var(--paper); border-radius: 18px 18px 0 0; padding: 18px 16px; padding-bottom: calc(72px + env(safe-area-inset-bottom)); max-height: 92vh; overflow: auto; } /* 下に72px：Netlifyの「Powered by Netlify」表示とボタンが重ならないように */
+/* 記入画面などが開いている間は、下のバーを出さない（ボタンと重ならないように） */
+body:has(.overlay:not(.hidden)) .copy-bar { display: none !important; }
 @media (min-width: 700px) { .overlay { align-items: center; } .sheet { border-radius: 18px; } }
 .sheet h2 { margin: 0 0 12px; font-size: 17px; }
 .field { margin-bottom: 14px; }
@@ -215,7 +217,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid var(--br
 .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #fff; border: 1px solid var(--bd2); border-radius: 10px; }
 .toggle-row input { width: 22px; height: 22px; }
 
-.toast { position: fixed; left: 50%; bottom: 70px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 22px; font-size: 13px; z-index: 80; max-width: 90vw; box-shadow: 0 6px 18px rgba(0,0,0,.2); }
+.toast { position: fixed; left: 50%; top: 64px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 22px; font-size: 13px; z-index: 80; max-width: 90vw; box-shadow: 0 6px 18px rgba(0,0,0,.2); }
 .toast.error { background: #a9493d; }
 .saving { position: fixed; top: 8px; right: 10px; font-size: 11px; background: #fff; border: 1px solid var(--bd); padding: 3px 10px; border-radius: 12px; z-index: 60; }
 /* 月の予約記録（A4横） */
@@ -838,10 +840,26 @@ $('gridBody').addEventListener('click', e => {
   const td = e.target.closest('td');
   if (!td || !td.dataset.date) return;
   if (pasteMode) { pasteAt(td.dataset.date, td.dataset.time); return; }
-  if (selection) { clearSelection(); return; } // 選択中のクリックは選択を外すだけ
   if (copyMode) return;
+  const touch = window.matchMedia('(pointer: coarse)').matches;
+  const t = ptTime(td, e.clientX, e.clientY), day = dragDay(td.dataset.date);
+  if (!touch && day && isBlocking(day.cells[t])) { selectWholeBooking(td.dataset.date, t); return; } // PC：予約は1回クリックで選ぶだけ。開くのはダブルクリック
+  if (selection) { clearSelection(); return; } // 選択中のクリックは選択を外すだけ
   openCell(td.dataset.date, td.dataset.time);
 });
+// PC：予約のある枠をダブルクリックで記入画面（設定変更）を開く
+$('gridBody').addEventListener('dblclick', e => {
+  if (window.matchMedia('(pointer: coarse)').matches) return;
+  const td = e.target.closest('td'); if (!td || !td.dataset.date) return;
+  const t = ptTime(td, e.clientX, e.clientY), day = dragDay(td.dataset.date);
+  if (!day || !isBlocking(day.cells[t])) return;
+  clearSelection();
+  openCell(td.dataset.date, t);
+});
+function selectWholeBooking(date, time) {
+  const bk = findBooking(dragDay(date), time);
+  setSelection({ a: { date, time: bk.start }, b: { date, time: bk.own[bk.own.length - 1] || bk.start } });
+}
 
 function dragDay(date) { const e = days.find(d => d.date === date); return e ? e.day : null; }
 function dragClear() {
@@ -923,14 +941,16 @@ function updateBar() {
   const bar = $('copyBar'), txt = $('copyBarText'), btns = $('copyBarBtns');
   const touch = window.matchMedia('(pointer: coarse)').matches;
   let html = '';
-  if (clip && !selection) {
-    txt.textContent = '📋 ' + clip.items.length + '件をコピー中：' + (pasteMode ? '貼り付ける位置（左上）をタップするとすぐ登録' : '貼り付けたい位置で右クリックするとすぐ登録（Ctrl+V も可・Escでやめる）');
-    html = '<button class="btn" type="button" data-act="repeat">くり返し貼り付け…</button>';
+  // PCは右クリックのメニューで操作するので、下のバーは出さない（スマホ・タブレットだけ）
+  if (!touch && !copyMode) { /* なし */ }
+  else if (clip && !selection) {
+    txt.textContent = '📋 ' + clip.items.length + '件を' + (clip.cut ? 'カット' : 'コピー') + '中：貼り付ける位置（左上）をタップ';
+    html = '<button class="btn" type="button" data-act="repeat">くり返し…</button><button class="btn" type="button" data-act="end">やめる</button>';
   } else if (selection) {
     const n = selectionBookings().list.length;
-    txt.textContent = '選択中：予約 ' + n + '件';
-    html = '<button class="btn primary" type="button" data-act="copy"' + (n ? '' : ' disabled') + '>コピー' + (touch ? '' : '（Ctrl+C）') + '</button>' +
-      '<button class="btn" type="button" data-act="clear">解除</button>';
+    txt.textContent = '選択中：' + n + '件';
+    const dis = n ? '' : ' disabled';
+    html = '<button class="btn primary" type="button" data-act="copy"' + dis + '>コピー</button><button class="btn" type="button" data-act="cut"' + dis + '>カット</button><button class="btn" type="button" data-act="delete"' + dis + '>削除</button><button class="btn" type="button" data-act="clear">解除</button>';
   } else if (copyMode) {
     txt.textContent = 'コピーする範囲をなぞってください' + (touch ? '（長押ししてから指を動かす）' : '');
     html = '<button class="btn" type="button" data-act="mode-off">やめる</button>';
@@ -943,7 +963,9 @@ function updateBar() {
 $('copyBarBtns').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const act = b.dataset.act;
-  if (act === 'copy') doCopy();
+  if (act === 'copy') doCopy(false);
+  else if (act === 'cut') doCopy(true);
+  else if (act === 'delete') deleteSelection();
   else if (act === 'clear') clearSelection();
   else if (act === 'mode-off') { copyMode = false; clearSelection(); }
   else if (act === 'end') endPaste();
@@ -951,22 +973,56 @@ $('copyBarBtns').addEventListener('click', e => {
   else if (act === 'repeat') openPaste();
 });
 
-function doCopy() {
+function doCopy(cut) {
   if (!selection) return;
   const { r, list } = selectionBookings();
   if (!list.length) { toast('選んだ範囲に予約がありません', true); return; }
+  const cutSrc = cut ? list.map(b => ({ date: b.date, start: b.start, minutes: b.minutes, color: b.color, name: b.name, x: b.excluded ? 1 : 0 })) : null;
   // 貼り付けの基準（左上）＝選んだ予約のうち一番早い日・一番早い開始時刻（余白をなぞっても位置がずれないように）
   const base = parse(list.map(b => b.date).sort()[0]), baseMin = Math.min(...list.map(b => toMin(b.start)));
   clip = {
     items: list.map(b => ({ dOff: Math.round((parse(b.date) - base) / 86400000), tOff: toMin(b.start) - baseMin, minutes: b.minutes, color: b.color, name: b.name, x: b.excluded ? 1 : 0 })),
+    cut: cutSrc, // カット：貼り付けたときに元の場所から消す
   };
   // 「くり返し貼り付け」用（日付つき）
   clipboard = { first: r.from, last: r.to, from: r.t0, to: r.t1, items: list.map(b => ({ date: b.date, start: b.start, minutes: b.minutes, color: b.color, name: b.name, x: b.excluded ? 1 : 0 })) };
   copyMode = false;
   selection = null; paintSelection();
-  pasteMode = window.matchMedia('(pointer: coarse)').matches; // スマホ・タブレットはタップで貼る。PCは右クリック（または Ctrl+V）で貼る
+  pasteMode = window.matchMedia('(pointer: coarse)').matches; // スマホ・タブレットはタップで貼る。PCは右クリック →「貼り付け」（または Ctrl+V）
   updateBar();
-  toast(clip.items.length + '件をコピーしました');
+  toast(clip.items.length + '件を' + (cut ? 'カット' : 'コピー') + 'しました');
+}
+// 選んだ範囲の予約を消す（範囲の部分だけ）。1回の操作として「戻る」で戻せる
+async function deleteSelection() {
+  if (!selection) return;
+  const { list } = selectionBookings();
+  if (!list.length) { toast('選んだ範囲に予約がありません', true); return; }
+  const dates = [...new Set(list.map(b => b.date))];
+  try {
+    await withHistory(dates, 'delete', async () => { await deleteSegments(list); });
+    clearSelection(); await loadWeek();
+    toast(list.length + '件を削除しました　戻すときは ↶（Ctrl+Z）');
+  } catch (err) { toast(err.message, true); loadWeek().catch(() => {}); }
+}
+async function deleteSegments(list) {
+  for (const b of list) {
+    const ts = []; for (let m = toMin(b.start); m < toMin(b.start) + b.minutes; m += 10) ts.push(toTime(m));
+    await api('/api/edit/cells', { method: 'POST', body: { date: b.date, times: ts, ownTimes: ts, color: null, name: '' } });
+  }
+}
+// キャンセル削除：選んだ予約（まるごと）をキャンセル処理する（キャンセル統計に残る）
+async function cancelSelection() {
+  if (!selection) return;
+  const { list } = selectionBookings();
+  const seen = new Set(), targets = [];
+  list.forEach(b => { const bk = findBooking(dragDay(b.date), b.start); const k = b.date + bk.start; if (!seen.has(k) && b.color !== 'gray' && b.color !== 'red') { seen.add(k); targets.push({ date: b.date, own: bk.own, name: b.name, start: bk.start }); } });
+  if (!targets.length) { toast('キャンセル処理できる予約がありません（赤・グレーは対象外）', true); return; }
+  if (!(await askConfirm(targets.map(t => label(t.date) + ' ' + t.start + ' ' + (t.name || '')).join('\n') + '\nをキャンセル処理します（キャンセル統計に残ります）。', 'キャンセル処理'))) return;
+  try {
+    for (const t of targets) await api('/api/edit/cancel', { method: 'POST', body: { date: t.date, times: t.own } });
+    clearSelection(); await loadWeek();
+    toast(targets.length + '件をキャンセル処理しました（キャンセル統計から戻せます）');
+  } catch (err) { toast(err.message, true); loadWeek().catch(() => {}); }
 }
 function endPaste() { pasteMode = false; clip = null; clearGhost(); updateBar(); }
 
@@ -1004,14 +1060,26 @@ async function pasteAt(date, time) {
   const items = targets.filter(t => !out.includes(t)).map(({ startMin, ...t }) => t);
   if (!items.length) { toast('予約表の時間の外になるため貼れません', true); return; }
   try {
-    const r = (await api('/api/edit/paste', { method: 'POST', body: { items } })).result; // 戻る（Ctrl+Z）で取り消せる
+    let r;
+    if (clip.cut) {
+      // カット：元の場所を消してから貼る（同じ場所の近くへ動かしても重ならないように）。入らなかった分は元の場所に戻す
+      const src = clip.cut;
+      const dates = [...new Set([...src.map(b => b.date), ...items.map(t => t.date)])];
+      await withHistory(dates, 'cut', async () => {
+        await deleteSegments(src);
+        r = (await api('/api/edit/paste', { method: 'POST', body: { items } })).result;
+        // 入らなかった分（重なり・時間外）は元の場所に戻す
+        const back = targets.map((t, i) => ({ t, src: src[i] })).filter(p => out.includes(p.t) || r.skipped.some(sk => sk.date === p.t.date && sk.start === p.t.start)).map(p => p.src);
+        if (back.length) await api('/api/edit/paste', { method: 'POST', body: { items: back } });
+      });
+    } else r = (await api('/api/edit/paste', { method: 'POST', body: { items } })).result; // 戻る（Ctrl+Z）で取り消せる
     clearGhost();
     await loadWeek();
     const skipped = r.skipped.length + out.length;
-    toast(r.placed + '件を登録しました' + (skipped ? '（重なり・時間外で ' + skipped + '件は入れていません）' : '') + '　戻すときは ↶（Ctrl+Z）', !!skipped && !r.placed);
-    if (r.placed) { clip = null; pasteMode = false; clearGhost(); } // 貼ったらコピー状態は自動で終わる（「終了」は不要）
+    toast(r.placed + '件を' + (clip.cut ? '移動' : '登録') + 'しました' + (skipped ? '（重なり・時間外で ' + skipped + '件は入れていません）' : '') + '　戻すときは ↶（Ctrl+Z）', !!skipped && !r.placed);
+    if (r.placed && (clip.cut || pasteMode)) { clip = null; pasteMode = false; } // カットとスマホは1回貼ったら終わり。PCのコピーは続けて貼れる（Escでやめる）
     updateBar();
-  } catch (err) { toast(err.message, true); }
+  } catch (err) { toast(err.message, true); loadWeek().catch(() => {}); }
 }
 function undoPaste() { return histMove(true); }
 
@@ -1021,7 +1089,9 @@ document.addEventListener('keydown', e => {
   if (document.querySelector('.overlay:not(.hidden)') || !$('pageView').classList.contains('hidden') || !$('reportView').classList.contains('hidden')) return;
   if (/INPUT|SELECT|TEXTAREA/.test((document.activeElement || {}).tagName || '')) return;
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
-  if (mod && k === 'c' && selection) { e.preventDefault(); doCopy(); }
+  if (mod && k === 'c' && selection) { e.preventDefault(); doCopy(false); }
+  else if (mod && k === 'x' && selection) { e.preventDefault(); doCopy(true); }
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && selection) { e.preventDefault(); deleteSelection(); }
   else if (mod && k === 'v' && clip && hoverCell) { e.preventDefault(); pasteAt(hoverCell.date, hoverCell.time); }
   else if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); histMove(true); }
   else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); histMove(false); }
@@ -1130,8 +1200,6 @@ $('gridBody').addEventListener('contextmenu', e => {
   const td = e.target.closest('td');
   if (!td || !td.dataset.date) return;
   e.preventDefault();
-  // コピー中に右クリック → その位置にすぐ貼り付けて登録（「貼り付け」を押し忘れて記入漏れにならないように）
-  if (clip && !selection) { pasteAt(td.dataset.date, ptTime(td, e.clientX, e.clientY)); return; }
   openCtxMenu(td, e.clientX, e.clientY);
 });
 
@@ -1145,17 +1213,20 @@ function inSelection(date, time) {
 function openCtxMenu(td, x, y) {
   const date = td.dataset.date, time = ptTime(td, x, y);
   const day = dragDay(date), booked = day && isBlocking(day.cells[time]);
+  // 右クリックした予約が選択の外なら、その予約まるごとを選び直す（ドラッグで一部を選んでいればその部分のまま）
+  if (booked && !inSelection(date, time)) selectWholeBooking(date, time);
+  else if (!booked && selection && !inSelection(date, time)) clearSelection();
+  const sel = !!selection && inSelection(date, time);
   const items = [];
-  if (inSelection(date, time)) items.push(['copy', 'コピー', 'Ctrl+C']);
-  else if (booked) items.push(['copy-one', 'この予約をコピー', '']);
-  if (clip) items.push(['paste', 'ここに貼り付け', 'Ctrl+V'], ['repeat', 'くり返し貼り付け…', '']);
-  if (selection) items.push(['fill-gray', 'この範囲をグレーにする（日付をまたいで一括）', ''], ['fill-red', 'この範囲を赤にする（日付をまたいで一括）', ''], ['fill-clear', 'この範囲の赤・グレーを消す', '']);
+  if (sel) items.push(['copy', 'コピー', 'Ctrl+C'], ['cut', 'カット', 'Ctrl+X'], ['delete', '削除', 'Delete'], ['cancel', 'キャンセル削除（統計に残す）', '']);
+  if (clip) items.push(['paste', '貼り付け', 'Ctrl+V']);
+  if (items.length) items.push(['-']);
+  items.push(['open', booked ? '予約を開く（編集）' : 'ここに予約を入れる', booked ? 'ダブルクリック' : '']);
+  if (sel && selection.a.date !== selection.b.date || sel && !booked) items.push(['fill-gray', 'この範囲をグレーにする', ''], ['fill-red', 'この範囲を赤にする', ''], ['fill-clear', 'この範囲の赤・グレーを消す', '']);
+  if (clip) items.push(['repeat', 'くり返し貼り付け…', '']);
+  if (histUndo.length || histRedo.length) items.push(['-']);
   if (histUndo.length) items.push(['undo', '元に戻す', 'Ctrl+Z']);
   if (histRedo.length) items.push(['redo', 'やり直す', 'Ctrl+Y']);
-  if (items.length) items.push(['-']);
-  items.push(['open', booked ? '予約を開く（編集）' : 'ここに予約を入れる', '']);
-  if (selection) items.push(['clear', '選択を解除', 'Esc']);
-  if (clip) items.push(['end', 'コピーを終了', 'Esc']);
   const m = $('ctxMenu');
   m.innerHTML = items.map(it => it[0] === '-' ? '<hr>' : '<button type="button" data-ctx="' + it[0] + '">' + it[1] + (it[2] ? '<small>' + it[2] + '</small>' : '') + '</button>').join('');
   m.classList.remove('hidden');
@@ -1166,8 +1237,10 @@ function openCtxMenu(td, x, y) {
     const b = ev.target.closest('[data-ctx]'); if (!b) return;
     closeCtxMenu();
     const act = b.dataset.ctx;
-    if (act === 'copy') doCopy();
-    else if (act === 'copy-one') { const bk = findBooking(day, time); setSelection({ a: { date, time: bk.start }, b: { date, time: bk.own[bk.own.length - 1] || bk.start } }); doCopy(); } // 予約1件まるごと
+    if (act === 'copy') doCopy(false);
+    else if (act === 'cut') doCopy(true);
+    else if (act === 'delete') deleteSelection();
+    else if (act === 'cancel') cancelSelection();
     else if (act === 'paste') pasteAt(date, time);
     else if (act === 'repeat') openPaste();
     else if (act === 'undo') histMove(true);
@@ -1175,8 +1248,6 @@ function openCtxMenu(td, x, y) {
     else if (act === 'fill-gray' || act === 'fill-red') openFill(act === 'fill-red' ? 'red' : 'gray');
     else if (act === 'fill-clear') fillSelection(null, '');
     else if (act === 'open') { if (selection) clearSelection(); openCell(date, time); }
-    else if (act === 'clear') clearSelection();
-    else if (act === 'end') endPaste();
   };
 }
 document.addEventListener('pointerdown', e => {
@@ -1194,7 +1265,15 @@ function dragEnd(cancel) {
   dragClear();
   dragState.suppressClick = true;
   setTimeout(() => { dragState.suppressClick = false; }, 400);
-  if (a.select || a.mode === 'select') { if (cancel) clearSelection(); else updateBar(); return; }
+  if (a.select || a.mode === 'select') {
+    if (cancel) { clearSelection(); return; }
+    // なぞらずに（1マスだけ）予約を選んだときは、その予約まるごと（スマホの長押しも同じ）
+    if (selection && selection.a.date === selection.b.date && selection.a.time === selection.b.time) {
+      const d = dragDay(selection.a.date);
+      if (d && isBlocking(d.cells[selection.a.time])) selectWholeBooking(selection.a.date, selection.a.time);
+    }
+    updateBar(); return;
+  }
   if (cancel) return;
   if (a.raw && a.raw !== a.time) { chooseAfterDrag(a); return; } // なぞったときは「予約を入れる／コピー」を選ぶ
   openCell(a.date, a.range.start, 0); // 長押しだけ（動かさない）は今までどおり記入画面
