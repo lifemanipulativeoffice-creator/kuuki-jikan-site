@@ -843,18 +843,21 @@ $('gridBody').addEventListener('click', e => {
   if (copyMode) return;
   const touch = window.matchMedia('(pointer: coarse)').matches;
   const t = ptTime(td, e.clientX, e.clientY), day = dragDay(td.dataset.date);
-  if (!touch && day && isBlocking(day.cells[t])) { selectWholeBooking(td.dataset.date, t); return; } // PC：予約は1回クリックで選ぶだけ。開くのはダブルクリック
-  if (selection) { clearSelection(); return; } // 選択中のクリックは選択を外すだけ
+  if (!touch) { // PC：1回クリックでは記入画面を開かない（開くのはダブルクリック）。予約なら選ぶだけ、空き枠なら選択を外すだけ
+    if (day && isBlocking(day.cells[t])) selectWholeBooking(td.dataset.date, t); else if (selection) clearSelection();
+    return;
+  }
+  if (selection) { clearSelection(); return; } // 選択中のタップは選択を外すだけ
   openCell(td.dataset.date, td.dataset.time);
 });
-// PC：予約のある枠をダブルクリックで記入画面（設定変更）を開く
+// PC：ダブルクリックで記入画面を開く（予約のある枠は設定変更、空き枠は新しい予約）
 $('gridBody').addEventListener('dblclick', e => {
   if (window.matchMedia('(pointer: coarse)').matches) return;
   const td = e.target.closest('td'); if (!td || !td.dataset.date) return;
   const t = ptTime(td, e.clientX, e.clientY), day = dragDay(td.dataset.date);
-  if (!day || !isBlocking(day.cells[t])) return;
+  if (!day) return;
   clearSelection();
-  openCell(td.dataset.date, t);
+  openCell(td.dataset.date, isBlocking(day.cells[t]) ? t : td.dataset.time);
 });
 function selectWholeBooking(date, time) {
   const bk = findBooking(dragDay(date), time);
@@ -1221,7 +1224,7 @@ function openCtxMenu(td, x, y) {
   if (sel) items.push(['copy', 'コピー', 'Ctrl+C'], ['cut', 'カット', 'Ctrl+X'], ['delete', '削除', 'Delete'], ['cancel', 'キャンセル削除（統計に残す）', '']);
   if (clip) items.push(['paste', '貼り付け', 'Ctrl+V']);
   if (items.length) items.push(['-']);
-  items.push(['open', booked ? '予約を開く（編集）' : 'ここに予約を入れる', booked ? 'ダブルクリック' : '']);
+  items.push(['open', booked ? '予約を開く（編集）' : 'ここに予約を入れる', 'ダブルクリック']);
   if (sel && selection.a.date !== selection.b.date || sel && !booked) items.push(['fill-gray', 'この範囲をグレーにする', ''], ['fill-red', 'この範囲を赤にする', ''], ['fill-clear', 'この範囲の赤・グレーを消す', '']);
   if (clip) items.push(['repeat', 'くり返し貼り付け…', '']);
   if (histUndo.length || histRedo.length) items.push(['-']);
