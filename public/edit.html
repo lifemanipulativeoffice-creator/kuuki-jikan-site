@@ -137,6 +137,11 @@ table.grid { border-collapse: separate; border-spacing: 0; width: 100%; min-widt
 /* 戻る・進む */
 .hist-btn { min-height: 38px; padding: 4px 10px; font-size: 18px; line-height: 1; }
 .hist-btn:disabled { opacity: .35; cursor: default; }
+/* カット中（貼り付けるまで）は薄暗く */
+.grid td.cut-src { filter: brightness(.55) saturate(.4); opacity: .65; }
+.grid td.cut-part::after { content: ''; position: absolute; pointer-events: none; background: rgba(30,30,30,.45); z-index: 1; }
+.grid td.cut-part.part-x::after { top: 0; bottom: 0; left: var(--c0); right: var(--c1); }
+.grid td.cut-part.part-y::after { left: 0; right: 0; top: var(--c0); bottom: var(--c1); }
 /* 右クリックメニュー */
 .ctx-menu { position: fixed; z-index: 60; min-width: 190px; background: #fff; border: 1px solid var(--bd); border-radius: 10px; box-shadow: 0 8px 24px rgba(var(--ink-rgb),.22); padding: 5px; }
 .ctx-menu button { display: flex; justify-content: space-between; gap: 16px; width: 100%; border: 0; background: none; text-align: left; padding: 8px 10px; border-radius: 7px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; }
@@ -683,6 +688,7 @@ function render() {
   if (oldCols) oldCols.remove();
   table.classList.toggle('month', shownWeeks === 4);
   if (shownWeeks === 4) renderMonth(); else renderCols();
+  if (typeof paintCutMarks === 'function') paintCutMarks();
 }
 
 /* PC：1か月表（日付が縦・時間が横） */
@@ -993,6 +999,7 @@ function doCopy(cut) {
   selection = null; paintSelection();
   pasteMode = window.matchMedia('(pointer: coarse)').matches; // スマホ・タブレットはタップで貼る。PCは右クリック →「貼り付け」（または Ctrl+V）
   updateBar();
+  paintCutMarks();
   toast(clip.items.length + '件を' + (cut ? 'カット' : 'コピー') + 'しました');
 }
 // 選んだ範囲の予約を消す（範囲の部分だけ）。1回の操作として「戻る」で戻せる
@@ -1027,7 +1034,24 @@ async function cancelSelection() {
     toast(targets.length + '件をキャンセル処理しました（キャンセル統計から戻せます）');
   } catch (err) { toast(err.message, true); loadWeek().catch(() => {}); }
 }
-function endPaste() { pasteMode = false; clip = null; clearGhost(); updateBar(); }
+function endPaste() { pasteMode = false; clip = null; clearGhost(); paintCutMarks(); updateBar(); }
+// カット中の予約（貼り付けるまで）を薄暗く表示する。予約の一部だけカットしたときは、その部分だけ暗くする
+function paintCutMarks() {
+  document.querySelectorAll('#gridBody td.cut-src, #gridBody td.cut-part').forEach(td => { td.classList.remove('cut-src', 'cut-part', 'part-x', 'part-y'); td.style.removeProperty('--c0'); td.style.removeProperty('--c1'); });
+  if (!clip || !clip.cut) return;
+  clip.cut.forEach(b => {
+    const lo = toMin(b.start), hi = lo + b.minutes;
+    document.querySelectorAll('#gridBody td[data-date="' + b.date + '"]').forEach(td => {
+      const sp = cellSpan(td), s0 = toMin(td.dataset.time), e0 = s0 + sp.n * 10;
+      const a = Math.max(s0, lo), z = Math.min(e0, hi);
+      if (z <= a) return;
+      if (a === s0 && z === e0) { td.classList.add('cut-src'); return; }
+      td.classList.add('cut-part', sp.dir === 'x' ? 'part-x' : 'part-y');
+      td.style.setProperty('--c0', ((a - s0) / (e0 - s0) * 100) + '%');
+      td.style.setProperty('--c1', ((e0 - z) / (e0 - s0) * 100) + '%');
+    });
+  });
+}
 
 // 貼り付け先（左上）から、各予約の行き先を計算
 function pasteTargets(date, time) {
@@ -1080,7 +1104,7 @@ async function pasteAt(date, time) {
     await loadWeek();
     const skipped = r.skipped.length + out.length;
     toast(r.placed + '件を' + (clip.cut ? '移動' : '登録') + 'しました' + (skipped ? '（重なり・時間外で ' + skipped + '件は入れていません）' : '') + '　戻すときは ↶（Ctrl+Z）', !!skipped && !r.placed);
-    if (r.placed && (clip.cut || pasteMode)) { clip = null; pasteMode = false; } // カットとスマホは1回貼ったら終わり。PCのコピーは続けて貼れる（Escでやめる）
+    if (r.placed && (clip.cut || pasteMode)) { clip = null; pasteMode = false; paintCutMarks(); } // カットとスマホは1回貼ったら終わり。PCのコピーは続けて貼れる（Escでやめる）
     updateBar();
   } catch (err) { toast(err.message, true); loadWeek().catch(() => {}); }
 }
