@@ -689,6 +689,7 @@ function render() {
   table.classList.toggle('month', shownWeeks === 4);
   if (shownWeeks === 4) renderMonth(); else renderCols();
   if (typeof paintCutMarks === 'function') paintCutMarks();
+  fitNames();
 }
 
 /* PC：1か月表（日付が縦・時間が横） */
@@ -756,7 +757,43 @@ function fitMonth() {
   table.style.setProperty('--rowh', rowH + 'px');
   table.style.setProperty('--fs', Math.max(10, Math.min(16, rowH - 6)) + 'px');
 }
-window.addEventListener('resize', () => fitMonth());
+window.addEventListener('resize', () => { fitMonth(); fitNames(); });
+// 名前が枠に収まらないとき、少なくとも苗字（空白の前／なければ先頭3文字）が切れずに見える大きさまで文字を小さくする
+var _nameCv;
+function nameHead(n) {
+  const s = String(n).trim();
+  const i = s.search(/[\s\u3000]/);
+  return i > 0 ? s.slice(0, i) : s.slice(0, Math.min(3, s.length));
+}
+function fitNames() {
+  if (!_nameCv) _nameCv = document.createElement('canvas').getContext('2d');
+  document.querySelectorAll('#gridBody td').forEach(td => {
+    const n = td.dataset.name || td.textContent;
+    if (!n) return;
+    if (td.dataset.name) td.textContent = n;
+    td.style.fontSize = ''; td.style.textOverflow = '';
+    const cs = getComputedStyle(td);
+    const avail = td.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 1;
+    if (avail <= 0) return;
+    let fs = parseFloat(cs.fontSize);
+    const font = sz => { _nameCv.font = cs.fontWeight + ' ' + sz + 'px ' + cs.fontFamily; };
+    font(fs);
+    const wrap = cs.whiteSpace !== 'nowrap';
+    const longest = wrap ? Math.max(...n.split(/[\s\u3000]+/).map(w => _nameCv.measureText(w).width)) : _nameCv.measureText(n).width;
+    if (longest <= avail) return; // そのまま収まる
+    const head = _nameCv.measureText(nameHead(n)).width;
+    if (head > avail) { // 苗字が切れる → 苗字が収まる大きさまで縮める
+      fs = Math.max(7, Math.floor(fs * avail / head * 10) / 10);
+      td.style.fontSize = fs + 'px'; font(fs);
+    }
+    if (wrap) return;
+    // 1行表示：文字が途中で切れないよう、収まる文字数だけ表示（全文はマウスを乗せると出る）
+    td.dataset.name = n; td.style.textOverflow = 'clip';
+    let k = n.length;
+    while (k > 1 && _nameCv.measureText(n.slice(0, k)).width > avail) k--;
+    td.textContent = n.slice(0, k).trim();
+  });
+}
 
 /* スマホ・タブレット：日付が横・時間が縦 */
 function renderCols() {
