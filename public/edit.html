@@ -396,6 +396,10 @@ body:has(.overlay:not(.hidden)) .copy-bar { display: none !important; }
       <input id="nameInput" class="text-input" maxlength="20" placeholder="苗字 または カルテ番号" autocomplete="off">
       <div class="hint">電話番号・症状などは書かないでください（最大20文字）</div>
     </div>
+    <div class="field" id="startField">
+      <label for="startSelect">開始時間（同じ日の中で時間をずらす）</label>
+      <select id="startSelect" class="text-input"></select>
+    </div>
     <div class="field">
       <label for="lengthSelect">長さ</label>
       <select id="lengthSelect" class="text-input"></select>
@@ -1578,8 +1582,9 @@ function openCell(date, time, presetLen) {
   const bk = findBooking(day, time);
   const cell = day.cells[bk.start];
   const ownSet = new Set(bk.own);
-  current = { date, time: bk.start, own: bk.own, max: maxMinutes(day, bk.start, bk.own),
+  current = { date, time: bk.start, orig: bk.start, own: bk.own, max: maxMinutes(day, bk.start, bk.own),
     allBlocked: times.some(t => !ownSet.has(t) && isBlocking(day.cells[t])) };
+  delete $('cellTitle').dataset.base;
   $('cellTitle').textContent = label(date) + ' ' + bk.start + (bk.own.length === times.length ? '（当日全て）' : bk.own.length ? '（' + bk.own.length * 10 + '分の予約）' : '');
   chosenColor = cell ? (cell.c || null) : 'pink';
   $('nameInput').value = cell && cell.n ? cell.n : '';
@@ -1596,6 +1601,7 @@ function openCell(date, time, presetLen) {
   opts.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = lengthLabel(v, bk.start); sel.appendChild(o); });
   sel.value = String(isAllDay ? 'all' : ownLen || dragLen || settings.defaultLength);
   $('existingActions').classList.toggle('hidden', !cell);
+  buildStartSelect(day, !!cell && !isAllDay);
   $('excludeCheck').checked = !!(cell && cell.x);
   manualExclude = $('excludeCheck').checked;
   syncExclude();
@@ -1610,6 +1616,33 @@ function openCell(date, time, presetLen) {
   if (!cell) setTimeout(() => $('nameInput').focus(), 80);
 }
 $('lengthSelect').addEventListener('change', updateOverlapWarn);
+// 開始時間の選択肢：今の開始から前後2時間（10分刻み）。ほかの予約・赤・グレーにかかる時刻は選べない
+const SHIFT_RANGE = 120;
+function buildStartSelect(day, show) {
+  $('startField').classList.toggle('hidden', !show);
+  const sel = $('startSelect'); sel.innerHTML = '';
+  if (!show) return;
+  const o0 = toMin(current.orig);
+  times.filter(t => Math.abs(toMin(t) - o0) <= SHIFT_RANGE).forEach(t => {
+    const ok = maxMinutes(day, t, current.own) >= 10;
+    const o = document.createElement('option'); o.value = t;
+    o.textContent = t + (t === current.orig ? '（今の時間）' : ok ? '' : ' × ほかの予定あり');
+    o.disabled = !ok; sel.appendChild(o);
+  });
+  sel.value = current.orig;
+}
+$('startSelect').addEventListener('change', () => {
+  const day = days.find(d => d.date === current.date).day;
+  current.time = $('startSelect').value;
+  current.max = maxMinutes(day, current.time, current.own);
+  const sel = $('lengthSelect'), v = sel.value;
+  [...sel.options].forEach(o => { o.textContent = lengthLabel(o.value === 'all' ? 'all' : Number(o.value), current.time); });
+  sel.value = v;
+  const base = $('cellTitle').dataset.base || $('cellTitle').textContent;
+  $('cellTitle').dataset.base = base;
+  $('cellTitle').textContent = current.time === current.orig ? base : base.replace(current.orig, current.orig + ' → ' + current.time);
+  updateOverlapWarn();
+});
 $('nameInput').addEventListener('input', updateOverlapWarn);
 
 // 赤・グレーは自動で統計から除外（チェックを入れた状態で固定して見せる）
@@ -1626,12 +1659,13 @@ async function saveCells(color, name, rng) {
   if (busy) return;
   busy = true; $('saving').classList.remove('hidden');
   try {
+    const moved = current.orig && current.time !== current.orig ? current.orig + ' → ' + current.time : '';
     const r = await api('/api/edit/cells', { method: 'POST', body: { date: current.date, times: rng, ownTimes: current.own, color, name, exclude: !!(color || name) && !AUTO_EXCLUDE.includes(color) && $('excludeCheck').checked } });
     const entry = days.find(d => d.date === r.date);
     if (entry) entry.day = r.day;
     render();
     closeModals();
-    toast(color || name ? '保存しました' : '消しました');
+    toast(!(color || name) ? '消しました' : moved ? moved + ' に移動しました' : '保存しました');
   } catch (err) {
     toast(err.message, true);
     loadWeek().catch(() => {}); // ほかの端末が先に入れていた場合に備えて最新を読み直す
