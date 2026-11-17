@@ -136,9 +136,11 @@ assert.equal((await call('GET', '/api/edit/month?month=2026-10')).status, 401);
 
 // 10) 設定
 r = await call('GET', '/api/edit/settings', null, token);
-assert.deepEqual(r.body.settings.lengths, [10, 20, 30, 60, 90, 120, 'all']);
+assert.deepEqual(r.body.settings.lengths, [10, 20, 30, 40, 60, 70, 90, 120, 'all']);
 r = await call('POST', '/api/edit/settings', { lengths: [30, 60, 'all', 999], defaultLength: 30 }, token);
-assert.deepEqual(r.body.settings, { lengths: [30, 60, 'all'], defaultLength: 30 });
+assert.deepEqual(r.body.settings, { lengths: [30, 60, 'all'], defaultLength: 30, v: 2 });
+r = await call('GET', '/api/edit/settings', null, token);
+assert.deepEqual(r.body.settings.lengths, [30, 60, 'all']); // 保存後は 40/70 を勝手に足さない
 
 // 11) キャンセル：予約表から消えて記録に残る
 await call('POST', '/api/edit/cells', { date: '2026-10-15', times: T('11:00', 60), color: 'pink', name: '岡田' }, token);

@@ -14,6 +14,13 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
   const addD = (s, n) => { const [y, m, d] = s.split('-').map(Number); return ymd(new Date(y, m - 1, d + n)); };
   const wday = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).getDay(); };
 
+  // 設定v2：既存の設定に 40分・70分 を1回だけ追加
+  function migSettings(st) {
+    if (!st || st.v >= 2 || !Array.isArray(st.lengths)) return st;
+    const all = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 150, 180, 'all'];
+    st.lengths = all.filter(v => st.lengths.includes(v) || v === 40 || v === 70); st.v = 2; save();
+    return st;
+  }
   function sample() {
     const t = new Date(); t.setHours(0, 0, 0, 0);
     const w = t.getDay(); const mon = ymd(new Date(t.getFullYear(), t.getMonth(), t.getDate() + (w === 0 ? -6 : 1 - w)));
@@ -74,7 +81,7 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
       const start = url.searchParams.get('start');
       const nDays = Math.min(42, Math.max(7, Math.round(Number(url.searchParams.get('days')) || 7)));
       extendCopies && extendCopies();
-      return reply({ ok: true, times: TIMES, colors: COLORS, settings: (store.__meta && store.__meta.settings) || { lengths: [10, 20, 30, 60, 90, 120, 'all'], defaultLength: 60 }, days: Array.from({ length: nDays }, (_, i) => { const d = addD(start, i); return { date: d, day: JSON.parse(JSON.stringify(getDay(d))) }; }) });
+      return reply({ ok: true, times: TIMES, colors: COLORS, settings: (store.__meta && migSettings(store.__meta.settings)) || { lengths: [10, 20, 30, 40, 60, 70, 90, 120, 'all'], defaultLength: 60 }, days: Array.from({ length: nDays }, (_, i) => { const d = addD(start, i); return { date: d, day: JSON.parse(JSON.stringify(getDay(d))) }; }) });
     }
     if (url.pathname === '/api/edit/month') {
       const month = url.searchParams.get('month'); const ds = [];
@@ -118,7 +125,7 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
       const ds = Object.entries(body.days || {}).filter(([d]) => /^\d{4}-\d{2}-\d{2}$/.test(d));
       ds.forEach(([d, day]) => { store[d] = day; });
       if (body.extra) {
-        const m0 = store.__meta || (store.__meta = { settings: { lengths: [10, 20, 30, 60, 90, 120, 'all'], defaultLength: 60 }, cancels: [], rules: [] });
+        const m0 = store.__meta || (store.__meta = { settings: { lengths: [10, 20, 30, 40, 60, 70, 90, 120, 'all'], defaultLength: 60 }, cancels: [], rules: [] });
         Object.entries(body.extra).forEach(([k, v]) => {
           if (k === 'meta/settings') m0.settings = v;
           else if (k === 'meta/fixed') m0.rules = v;
@@ -131,15 +138,15 @@ function makeLocalBackend(DATA_KEY, DEMO_PASSWORD) {
     }
     if (url.pathname === '/api/edit/import-status') return reply({ ok: true, configured: false, demo: true, sheetName: 'CMYK臨時予約表' });
     // ---- 設定 ----
-    const meta = store.__meta || (store.__meta = { settings: { lengths: [10, 20, 30, 60, 90, 120, 'all'], defaultLength: 60 }, cancels: [], rules: [] });
+    const meta = store.__meta || (store.__meta = { settings: { lengths: [10, 20, 30, 40, 60, 70, 90, 120, 'all'], defaultLength: 60 }, cancels: [], rules: [] });
     if (url.pathname === '/api/edit/settings') {
       if ((init.method || 'GET') === 'POST') {
         const all = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 150, 180, 'all'];
         const lengths = all.filter(v => (body.lengths || []).includes(v));
-        meta.settings = { lengths: lengths.length ? lengths : meta.settings.lengths, defaultLength: lengths.includes(body.defaultLength) ? body.defaultLength : lengths[0] };
+        meta.settings = { lengths: lengths.length ? lengths : meta.settings.lengths, defaultLength: lengths.includes(body.defaultLength) ? body.defaultLength : lengths[0], v: 2 };
         save();
       }
-      return reply({ ok: true, settings: meta.settings });
+      return reply({ ok: true, settings: migSettings(meta.settings) });
     }
     // ---- キャンセル ----
     if (url.pathname === '/api/edit/cancel') {
