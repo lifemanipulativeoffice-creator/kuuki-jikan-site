@@ -206,6 +206,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid var(--br
 /* 記入画面などが開いている間は、下のバーを出さない（ボタンと重ならないように） */
 body:has(.overlay:not(.hidden)) .copy-bar { display: none !important; }
 .copy-bar-btns .btn { white-space: nowrap; }
+.grid td .nm-wrap { overflow: hidden; white-space: normal; word-break: break-all; line-height: 1.05; }
 @media (min-width: 700px) { .overlay { align-items: center; } .sheet { border-radius: 18px; } }
 .sheet h2 { margin: 0 0 12px; font-size: 17px; }
 .field { margin-bottom: 14px; }
@@ -764,40 +765,70 @@ function fitMonth() {
   table.style.setProperty('--fs', Math.max(10, Math.min(16, rowH - 6)) + 'px');
 }
 window.addEventListener('resize', () => { fitMonth(); fitNames(); });
-// 名前が枠に収まらないとき、少なくとも苗字（空白の前／なければ先頭3文字）が切れずに見える大きさまで文字を小さくする
-var _nameCv;
-function nameHead(n) {
-  const s = String(n).trim();
-  const i = s.search(/[\s\u3000]/);
-  return i > 0 ? s.slice(0, i) : s.slice(0, Math.min(3, s.length));
+// 名前の先頭3文字（空白は数えない）が入る長さ
+function headLen(n) { let c = 0; for (let i = 0; i < n.length; i++) { if (!/\s/.test(n[i]) && ++c === 3) return i + 1; } return n.length; }
+// td の中で、名前の先頭 k 文字がすべて見えているか（はみ出し・折り返しで隠れていないか）
+let _cv;
+function charsVisible(td, k) {
+  const tn = td.firstChild; if (!tn || tn.nodeType !== 3) return true;
+  const r = td.getBoundingClientRect();
+  const cs = getComputedStyle(td);
+  const L = r.left + parseFloat(cs.borderLeftWidth), T = r.top + parseFloat(cs.borderTopWidth);
+  const R = r.right - parseFloat(cs.borderRightWidth), B = r.bottom - parseFloat(cs.borderBottomWidth);
+  if (!_cv) _cv = document.createElement('canvas').getContext('2d');
+  _cv.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+  const fs = parseFloat(cs.fontSize);
+  const rg = document.createRange();
+  for (let i = 0; i < Math.min(k, tn.length); i++) {
+    if (/\s/.test(tn.data[i])) continue;
+    rg.setStart(tn, i); rg.setEnd(tn, i + 1);
+    const c = rg.getBoundingClientRect(); // はみ出した文字は枠の所で切られた大きさになるので、幅・高さは文字の大きさから求める
+    if (c.width === 0 || c.left < L - 1 || c.left + _cv.measureText(tn.data[i]).width > R + 1 || c.top < T - 1 || c.top + fs > B + 1) return false;
+  }
+  return true;
 }
+// 名前が枠に収まらないとき、少なくとも先頭3文字（漢字・ひらがな問わず）が切れずに見える大きさまで文字を小さくする
+// 1行で入らないほど狭い枠（10分枠など）は、2行に折り返して入れる
 function fitNames() {
-  if (!_nameCv) _nameCv = document.createElement('canvas').getContext('2d');
   document.querySelectorAll('#gridBody td').forEach(td => {
-    const n = td.dataset.name || td.textContent;
+    const n = (td.dataset.name || td.textContent).trim();
     if (!n) return;
-    if (td.dataset.name) td.textContent = n;
-    td.style.fontSize = ''; td.style.textOverflow = '';
-    const cs = getComputedStyle(td);
-    const avail = td.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 1;
-    if (avail <= 0) return;
-    let fs = parseFloat(cs.fontSize);
-    const font = sz => { _nameCv.font = cs.fontWeight + ' ' + sz + 'px ' + cs.fontFamily; };
-    font(fs);
-    const wrap = cs.whiteSpace !== 'nowrap';
-    const longest = wrap ? Math.max(...n.split(/[\s\u3000]+/).map(w => _nameCv.measureText(w).width)) : _nameCv.measureText(n).width;
-    if (longest <= avail) return; // そのまま収まる
-    const head = _nameCv.measureText(nameHead(n)).width;
-    if (head > avail) { // 苗字が切れる → 苗字が収まる大きさまで縮める
-      fs = Math.max(7, Math.floor(fs * avail / head * 10) / 10);
-      td.style.fontSize = fs + 'px'; font(fs);
+    if (td.dataset.name) td.textContent = n; // 前回の調整（短縮・2行用の箱）を外す
+    const st = td.style;
+    st.fontSize = st.lineHeight = '';
+    st.textOverflow = 'clip'; // 「…」に置き換わると正しく測れないので切り取り表示にする（収まらない分は下で文字単位に短くする）
+    if (td.clientWidth <= 0) return;
+    if (charsVisible(td, n.length)) return; // そのまま全部見える
+    td.dataset.name = n;
+    const k3 = headLen(n);
+    const nowrap = getComputedStyle(td).whiteSpace === 'nowrap';
+    let box = td;
+    if (!charsVisible(td, k3)) { // 先頭3文字が切れる → 見える大きさまで縮める
+      const base = parseFloat(getComputedStyle(td).fontSize);
+      const search = el => {
+        st.fontSize = '5px'; if (!charsVisible(el, k3)) return 0; // 最小5pxでも入らない
+        let lo = 5, hi = base;
+        for (let i = 0; i < 8; i++) { const mid = (lo + hi) / 2; st.fontSize = mid + 'px'; if (charsVisible(el, k3)) lo = mid; else hi = mid; }
+        return Math.floor(lo * 10) / 10;
+      };
+      st.lineHeight = '1.15';
+      const one = search(td);
+      let two = 0, div = null;
+      if (one < 8 && nowrap) { // 1行だと小さすぎる狭い枠：枠の高さの中で折り返して表示（行の高さは変えない）
+        const cs = getComputedStyle(td);
+        const h = td.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+        div = document.createElement('div'); div.className = 'nm-wrap'; div.style.height = Math.max(1, h) + 'px'; div.textContent = n;
+        td.textContent = ''; td.appendChild(div);
+        two = search(div);
+      }
+      if (two > one) { st.fontSize = two + 'px'; box = div; }
+      else { if (div) td.textContent = n; st.fontSize = Math.max(5, one) + 'px'; }
     }
-    if (wrap) return;
-    // 1行表示：文字が途中で切れないよう、収まる文字数だけ表示（全文はマウスを乗せると出る）
-    td.dataset.name = n; td.style.textOverflow = 'clip';
+    if (!nowrap && box === td) return;
+    // 文字が途中で切れないよう、見える文字数だけ表示（全文はマウスを乗せると出る）
     let k = n.length;
-    while (k > 1 && _nameCv.measureText(n.slice(0, k)).width > avail) k--;
-    td.textContent = n.slice(0, k).trim();
+    while (k > k3 && !charsVisible(box, k)) k--;
+    box.textContent = n.slice(0, k).trim();
   });
 }
 
