@@ -205,6 +205,7 @@ body.multi .grid th.wk, body.multi .grid td.wk { border-left: 2px solid var(--br
 .sheet { width: min(100vw, 460px); background: var(--paper); border-radius: 18px 18px 0 0; padding: 18px 16px; padding-bottom: calc(72px + env(safe-area-inset-bottom)); max-height: 92vh; overflow: auto; } /* 下に72px：Netlifyの「Powered by Netlify」表示とボタンが重ならないように */
 /* 記入画面などが開いている間は、下のバーを出さない（ボタンと重ならないように） */
 body:has(.overlay:not(.hidden)) .copy-bar { display: none !important; }
+.copy-bar-btns .btn { white-space: nowrap; }
 @media (min-width: 700px) { .overlay { align-items: center; } .sheet { border-radius: 18px; } }
 .sheet h2 { margin: 0 0 12px; font-size: 17px; }
 .field { margin-bottom: 14px; }
@@ -694,6 +695,7 @@ function render() {
   if (shownWeeks === 4) renderMonth(); else renderCols();
   if (typeof paintCutMarks === 'function') paintCutMarks();
   fitNames();
+  if (typeof pendingPaste !== 'undefined' && pendingPaste && pasteMode) paintGhost(pendingPaste.date, pendingPaste.time);
 }
 
 /* PC：1か月表（日付が縦・時間が横） */
@@ -881,12 +883,16 @@ let copyMode = false;      // ☰ から入る「なぞると必ず範囲選択�
 let selection = null;      // { a:{date,time}, b:{date,time} }
 let clip = null;           // { items:[{dOff,tOff,minutes,color,name,x}], label, w, h }
 let pasteMode = false, hoverCell = null, clipboard = null;
+let pendingPaste = null;   // スマホ：タップした貼り付け先（「ここに貼り付け」を押すまで確定しない）
 
 $('gridBody').addEventListener('click', e => {
   if (dragState.suppressClick) { dragState.suppressClick = false; return; }
   const td = e.target.closest('td');
   if (!td || !td.dataset.date) return;
-  if (pasteMode) { pasteAt(td.dataset.date, td.dataset.time); return; }
+  if (pasteMode) { // スマホ：タップした所を貼り付け先の候補にする（下の「ここに貼り付け」で確定）
+    pendingPaste = { date: td.dataset.date, time: ptTime(td, e.clientX, e.clientY) };
+    paintGhost(pendingPaste.date, pendingPaste.time); updateBar(); return;
+  }
   if (copyMode) return;
   const touch = window.matchMedia('(pointer: coarse)').matches;
   const t = ptTime(td, e.clientX, e.clientY), day = dragDay(td.dataset.date);
@@ -984,7 +990,7 @@ function selectionBookings() {
   return { r, list: out };
 }
 function clearSelection() { selection = null; paintSelection(); updateBar(); }
-function setSelection(s) { selection = s; if (s && pasteMode) { pasteMode = false; clearGhost(); } paintSelection(); updateBar(); } // 新しく選んだら貼り付け待ちは終える（コピー内容は右クリックで貼れる）
+function setSelection(s) { selection = s; if (s && pasteMode) { pasteMode = false; pendingPaste = null; clearGhost(); } paintSelection(); updateBar(); } // 新しく選んだら貼り付け待ちは終える（コピー内容は右クリックで貼れる）
 
 /* ---- 下のバー（いま何ができるか） ---- */
 function updateBar() {
@@ -993,7 +999,11 @@ function updateBar() {
   let html = '';
   // PCは右クリックのメニューで操作するので、下のバーは出さない（スマホ・タブレットだけ）
   if (!touch && !copyMode) { /* なし */ }
-  else if (clip && !selection) {
+  else if (clip && !selection && pendingPaste) {
+    const ng = document.querySelector('#gridBody td.paste-ng');
+    txt.textContent = '📋 ' + label(pendingPaste.date) + ' ' + pendingPaste.time + ' へ' + (clip.cut ? '移動' : '貼り付け') + (ng ? '（赤い所は重なって入りません）' : '');
+    html = '<button class="btn primary" type="button" data-act="paste-here">ここに貼る</button><button class="btn" type="button" data-act="end">やめる</button>';
+  } else if (clip && !selection) {
     txt.textContent = '📋 ' + clip.items.length + '件を' + (clip.cut ? 'カット' : 'コピー') + '中：貼り付ける位置（左上）をタップ';
     html = '<button class="btn" type="button" data-act="repeat">くり返し…</button><button class="btn" type="button" data-act="end">やめる</button>';
   } else if (selection) {
@@ -1018,6 +1028,7 @@ $('copyBarBtns').addEventListener('click', e => {
   else if (act === 'delete') deleteSelection();
   else if (act === 'clear') clearSelection();
   else if (act === 'mode-off') { copyMode = false; clearSelection(); }
+  else if (act === 'paste-here') { if (pendingPaste) { const p = pendingPaste; pendingPaste = null; pasteAt(p.date, p.time); } }
   else if (act === 'end') endPaste();
   else if (act === 'undo') undoPaste();
   else if (act === 'repeat') openPaste();
@@ -1038,6 +1049,7 @@ function doCopy(cut) {
   clipboard = { first: r.from, last: r.to, from: r.t0, to: r.t1, items: list.map(b => ({ date: b.date, start: b.start, minutes: b.minutes, color: b.color, name: b.name, x: b.excluded ? 1 : 0 })) };
   copyMode = false;
   selection = null; paintSelection();
+  pendingPaste = null;
   pasteMode = window.matchMedia('(pointer: coarse)').matches; // スマホ・タブレットはタップで貼る。PCは右クリック →「貼り付け」（または Ctrl+V）
   updateBar();
   paintCutMarks();
@@ -1075,7 +1087,7 @@ async function cancelSelection() {
     toast(targets.length + '件をキャンセル処理しました（キャンセル統計から戻せます）');
   } catch (err) { toast(err.message, true); loadWeek().catch(() => {}); }
 }
-function endPaste() { pasteMode = false; clip = null; clearGhost(); paintCutMarks(); updateBar(); }
+function endPaste() { pendingPaste = null; pasteMode = false; clip = null; clearGhost(); paintCutMarks(); updateBar(); }
 // カット中の予約（貼り付けるまで）を薄暗く表示する。予約の一部だけカットしたときは、その部分だけ暗くする
 function paintCutMarks() {
   document.querySelectorAll('#gridBody td.cut-src, #gridBody td.cut-part').forEach(td => { td.classList.remove('cut-src', 'cut-part', 'part-x', 'part-y'); td.style.removeProperty('--c0'); td.style.removeProperty('--c1'); });
@@ -1103,11 +1115,14 @@ function clearGhost() { document.querySelectorAll('#gridBody td.paste-ghost, #gr
 function paintGhost(date, time) {
   clearGhost();
   if (!clip) return;
+  // カットのときは元の場所は空く扱い（貼るときに先に消すため）
+  const freed = new Set();
+  (clip.cut || []).forEach(b => { for (let m = toMin(b.start); m < toMin(b.start) + b.minutes; m += 10) freed.add(b.date + ' ' + toTime(m)); });
   pasteTargets(date, time).forEach(t => {
     const day = dragDay(t.date);
     for (let m = t.startMin; m < t.startMin + t.minutes; m += 10) {
       const td = document.querySelector('#gridBody td[data-date="' + t.date + '"][data-time="' + toTime(m) + '"]');
-      const ng = !times.includes(toTime(m)) || (day && isBlocking(day.cells[toTime(m)]));
+      const ng = !times.includes(toTime(m)) || (day && isBlocking(day.cells[toTime(m)]) && !freed.has(t.date + ' ' + toTime(m)));
       if (td) td.classList.add(ng ? 'paste-ng' : 'paste-ghost');
     }
   });
@@ -1117,9 +1132,9 @@ $('gridBody').addEventListener('pointerover', e => {
   const td = e.target.closest('td');
   if (!td || !td.dataset.date) return;
   hoverCell = { date: td.dataset.date, time: td.dataset.time }; // Ctrl+V の貼り付け位置（青い枠は右クリックしたときだけ出す）
-  if (pasteMode) paintGhost(hoverCell.date, hoverCell.time);
+  if (pasteMode && !pendingPaste) paintGhost(hoverCell.date, hoverCell.time);
 });
-$('gridBody').addEventListener('pointerleave', () => { if (pasteMode) clearGhost(); });
+$('gridBody').addEventListener('pointerleave', () => { if (pasteMode && !pendingPaste) clearGhost(); });
 
 async function pasteAt(date, time) {
   if (!clip) return;
